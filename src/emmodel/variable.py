@@ -10,6 +10,8 @@ class ModelVariables:
     def __init__(self, variables: List[regmod.variable.Variable]):
         self.variables = variables
         self.var_names = [variable.name for variable in self.variables]
+        self.var_dict = {var_name: self.variables[i]
+                         for i, var_name in enumerate(self.var_names)}
 
     def get_model(self, data: regmod.data.Data) -> regmod.model.PoissonModel:
         return regmod.model.PoissonModel(data, self.variables, use_offset=True)
@@ -21,7 +23,7 @@ class YearModelVariables(ModelVariables):
         if not ("week" in self.var_names or "month" in self.var_names):
             raise ValueError("YearModelVariables must include 'week' or 'month'.")
         tunit = "week" if "week" in self.var_names else "month"
-        self.tunit_var = self.variables[self.var_names.index(tunit)]
+        self.tunit_var = self.var_dict[tunit]
 
     def get_model(self, data: regmod.data.Data) -> regmod.model.PoissonModel:
         self.tunit_var.check_data(data)
@@ -39,4 +41,4 @@ class TimeModelVariables(ModelVariables):
         super().__init__(variables)
         if "time" not in self.var_names:
             raise ValueError("TimeModelVariables must include 'time'.")
-        self.time_var = self.variables[self.var_names.index("time")]
+        self.time_var = self.var_dict["time"]
