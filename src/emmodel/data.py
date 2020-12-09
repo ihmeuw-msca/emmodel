@@ -52,13 +52,14 @@ class DataProcessor:
         time_lb = 0
         time_ub = (time_end[0] - time_start[0])*self.tunits_per_year + \
             (time_end[1] - time_start[1])
-        df = df[df["time"] >= time_lb & df["time"] <= time_ub]
+        df = df[(df["time"] >= time_lb) & (df["time"] <= time_ub)]
         return df.reset_index(drop=True)
 
     def add_offset(self,
                    df: pd.DataFrame,
-                   offset_id: int) -> pd.DataFrame:
-        df[f"offset_{offset_id}"] = np.log(df.population)
+                   offset_id: int,
+                   offset_col: str) -> pd.DataFrame:
+        df[f"offset_{offset_id}"] = np.log(df[offset_col])
         return df
 
     def subset_group(self,
@@ -73,10 +74,11 @@ class DataProcessor:
                 time_start: Tuple[int, int] = (2010, 0),
                 time_end: Tuple[int, int] = (2020, 8),
                 offset_id: int = 0,
+                offset_col: str = "population",
                 group_specs: Dict[str, List] = dict()) -> pd.DataFrame:
         df = self.select_cols(df)
         df = self.rename_cols(df)
         df = self.add_time(df, time_start, time_end)
-        df = self.add_offset(df, offset_id)
+        df = self.add_offset(df, offset_id, offset_col)
         df = self.subset_group(df, group_specs)
         return df
