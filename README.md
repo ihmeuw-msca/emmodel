@@ -1,2 +1,1 @@
-# emmodel
-Excess mortality model
+# Excess Mortality Model
