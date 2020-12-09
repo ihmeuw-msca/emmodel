@@ -1,5 +1,5 @@
 """
-Model module
+Variable module
 """
 from typing import List
 import numpy as np
