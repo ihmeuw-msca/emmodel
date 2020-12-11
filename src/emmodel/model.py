@@ -1,10 +1,15 @@
 """
 Model module
 """
+import os
+from pathlib import Path
 from typing import List
+
 import numpy as np
+import matplotlib.pyplot as plt
 import pandas as pd
 import regmod
+
 from emmodel.variable import ModelVariables
 
 
@@ -53,3 +58,33 @@ class ExcessMortalityModel:
             df[f"offset_{i + 1}"] = pred
         df["deaths_pred"] = np.exp(pred)
         return df
+
+    def plot_model(self, ax=None, title=None, folder=None, name="unknown"):
+        tunits_per_year = 52 if "week" in self.df.columns else 12
+
+        years = self.df.year.unique()
+        year_heads = (years - self.df.year.min())*tunits_per_year + 1
+
+        if ax is None:
+            ax = plt.subplots(1, figsize=(2.5*len(years), 5))[1]
+
+        ax.scatter(self.df.time, self.df.deaths, color="gray")
+        ax.plot(self.df.time,
+                np.exp(self.df[f"offset_{self.num_models}"]),
+                color="#008080")
+        ax.set_xticks(year_heads)
+        ax.set_xticklabels(years)
+        for year_week in year_heads:
+            ax.axvline(year_week, linestyle="--", color="gray")
+        ax.set_ylabel("deaths")
+        ax.set_xlabel("time")
+
+        if title is not None:
+            ax.set_title(title, loc="left")
+
+        if folder is not None:
+            folder = Path(folder)
+            if not folder.exists():
+                os.mkdir(folder)
+            plt.savefig(folder / f"{name}.pdf", bbox_inches='tight')
+        return ax
