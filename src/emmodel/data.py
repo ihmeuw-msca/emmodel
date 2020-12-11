@@ -26,10 +26,10 @@ class DataProcessor:
         else:
             raise ValueError("Unrecognized time unit, must be 'week' or 'month'.")
 
-        self.cols = [self.col_deaths,
-                     self.col_year,
-                     self.col_tunit,
-                     self.col_population] + self.col_covs
+        self.cols = np.unique([self.col_deaths,
+                               self.col_year,
+                               self.col_tunit,
+                               self.col_population] + self.col_covs)
 
     def select_cols(self, df: pd.DataFrame) -> pd.DataFrame:
         return df[self.cols].copy()
