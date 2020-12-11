@@ -36,9 +36,9 @@ class ExcessMortalityModel:
             self.data[i].attach_df(self.df)
             self.models.append(self.model_variables[i].get_model(self.data[i]))
             self.results.append(regmod.optimizer.scipy_optimize(self.models[i]))
-            self.df[f"offset_{i + 1}"] = self.models[i].parameters[0].get_param(
+            self.df[f"offset_{i + 1}"] = np.log(self.models[i].parameters[0].get_param(
                 self.results[i]["coefs"], self.data[i]
-            )
+            ))
             self.data[i].detach_df()
 
     def predict(self, df: pd.DataFrame) -> pd.DataFrame:
