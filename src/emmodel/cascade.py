@@ -66,9 +66,9 @@ class Cascade:
 
     def get_priors(self) -> Dict[str, regmod.prior.Prior]:
         priors = {}
-        for i, variables in self.model_variables:
+        for i, variables in enumerate(self.model_variables):
             priors.update(variables.result_to_priors(self.model.results[i]))
-        for var_name, mask in self.specs.prior_masks.itmes():
+        for var_name, mask in self.specs.prior_masks.items():
             priors[var_name].sd *= mask
         for prior in priors.values():
             prior.sd *= self.specs.level_masks[self.level_id]

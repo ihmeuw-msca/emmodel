@@ -26,7 +26,7 @@ class ModelVariables:
         slices = regmod.utils.sizes_to_sclices([var.size for var in self.variables])
         return {
             var_name: regmod.prior.GaussianPrior(mean=mean[slices[i]], sd=sd[slices[i]])
-            for i, var_name in self.var_names
+            for i, var_name in enumerate(self.var_names)
         }
 
 
