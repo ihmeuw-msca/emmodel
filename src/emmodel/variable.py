@@ -14,8 +14,9 @@ class ModelVariables:
                          for i, var_name in enumerate(self.var_names)}
 
     def add_priors(self, priors: Dict[str, regmod.prior.Prior]):
-        for var_name, prior in priors:
-            self.var_dict[var_name].add_priors(prior)
+        for var_name, prior in priors.items():
+            if var_name in self.var_dict.keys():
+                self.var_dict[var_name].add_priors(prior)
 
     def get_model(self, data: regmod.data.Data) -> regmod.model.PoissonModel:
         return regmod.model.PoissonModel(data, self.variables, use_offset=True)
