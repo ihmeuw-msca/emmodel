@@ -26,10 +26,10 @@ class DataProcessor:
         else:
             raise ValueError("Unrecognized time unit, must be 'week' or 'month'.")
 
-        self.cols = [self.col_deaths,
-                     self.col_year,
-                     self.col_tunit,
-                     self.col_population] + self.col_covs
+        self.cols = np.unique([self.col_deaths,
+                               self.col_year,
+                               self.col_tunit,
+                               self.col_population] + self.col_covs)
 
     def select_cols(self, df: pd.DataFrame) -> pd.DataFrame:
         return df[self.cols].copy()
@@ -49,7 +49,7 @@ class DataProcessor:
                  time_end: Tuple[int, int]) -> pd.DataFrame:
         df["time"] = (df["year"] - time_start[0])*self.tunits_per_year + \
             (df[self.tunit] - time_start[1])
-        time_lb = 0
+        time_lb = 1
         time_ub = (time_end[0] - time_start[0])*self.tunits_per_year + \
             (time_end[1] - time_start[1])
         df = df[(df["time"] >= time_lb) & (df["time"] <= time_ub)]

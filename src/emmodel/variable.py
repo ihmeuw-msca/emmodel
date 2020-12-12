@@ -15,15 +15,17 @@ class ModelVariables:
 
     def add_priors(self, priors: Dict[str, regmod.prior.Prior]):
         for var_name, prior in priors.items():
-            if var_name in self.var_dict.keys():
+            if var_name in self.var_names:
                 self.var_dict[var_name].add_priors(prior)
 
     def get_model(self, data: regmod.data.Data) -> regmod.model.PoissonModel:
         return regmod.model.PoissonModel(data, self.variables, use_offset=True)
 
-    def result_to_priors(self, result: Dict[str, np.ndarray]) -> Dict[str, regmod.prior.Prior]:
+    def result_to_priors(self,
+                         result: Dict[str, np.ndarray],
+                         min_var: float = 0.1) -> Dict[str, regmod.prior.Prior]:
         mean = result["coefs"]
-        sd = np.sqrt(np.diag(result["vcov"]))
+        sd = np.sqrt(np.maximum(min_var, np.diag(result["vcov"])))
         slices = regmod.utils.sizes_to_sclices([var.size for var in self.variables])
         return {
             var_name: regmod.prior.GaussianPrior(mean=mean[slices[i]], sd=sd[slices[i]])
