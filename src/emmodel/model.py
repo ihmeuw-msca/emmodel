@@ -59,11 +59,13 @@ class ExcessMortalityModel:
         df["deaths_pred"] = np.exp(pred)
         return df
 
-    def plot_model(self, ax=None, title=None, folder=None, name="unknown"):
+    def plot_model(self, time_start=(2010, 0), ax=None, title=None, folder=None, name="unknown"):
         tunits_per_year = 52 if "week" in self.df.columns else 12
+        tunit = "week" if "week" in self.df.columns else "month"
 
         years = self.df.year.unique()
-        year_heads = (years - self.df.year.min())*tunits_per_year + 1
+        year_heads = (years - time_start[0])*tunits_per_year + \
+            self.df.loc[self.df.year==years.min(), tunit].min() - time_start[1]
 
         if ax is None:
             ax = plt.subplots(1, figsize=(2.5*len(years), 5))[1]
