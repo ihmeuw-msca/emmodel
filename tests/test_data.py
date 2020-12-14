@@ -50,7 +50,7 @@ def test_add_time(df, data_processor):
     df = data_processor.select_cols(df)
     df = data_processor.rename_cols(df)
     df = data_processor.add_time(df, (2019, 1), (2020, 52))
-    assert np.allclose(df.time, np.arange(104))
+    assert np.allclose(df.time, np.arange(1, 104))
 
 
 def test_add_offset(df, data_processor):
