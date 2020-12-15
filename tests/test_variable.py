@@ -6,17 +6,17 @@ import numpy as np
 import pandas as pd
 import regmod
 from emmodel.data import DataProcessor
-from emmodel.variable import YearModelVariables, TimeModelVariables
+from emmodel.variable import SeasonalityModelVariables, TimeModelVariables
 
 
 @pytest.fixture
-def year_model_variables():
+def seasonality_model_variables():
     variables = [
         regmod.variable.SplineVariable("week",
                                        spline_specs=regmod.utils.SplineSpecs(knots=np.linspace(0.0, 1.0, 5),
                                                                              degree=3))
     ]
-    return YearModelVariables(variables)
+    return SeasonalityModelVariables(variables)
 
 
 @pytest.fixture
@@ -51,8 +51,8 @@ def data():
     )
 
 
-def test_year_model_variables(data, year_model_variables):
-    model = year_model_variables.get_model(data)
+def test_seasonality_model_variables(data, seasonality_model_variables):
+    model = seasonality_model_variables.get_model(data)
     assert isinstance(model, regmod.model.PoissonModel)
 
 
