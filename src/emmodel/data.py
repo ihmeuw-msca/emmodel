@@ -13,7 +13,6 @@ class DataProcessor:
     col_deaths: str
     col_year: str
     col_tunit: str
-    col_population: str
     col_covs: List[str] = field(default_factory=list)
 
     def __post_init__(self):
@@ -28,8 +27,7 @@ class DataProcessor:
 
         self.cols = np.unique([self.col_deaths,
                                self.col_year,
-                               self.col_tunit,
-                               self.col_population] + self.col_covs)
+                               self.col_tunit] + self.col_covs)
 
     def select_cols(self, df: pd.DataFrame) -> pd.DataFrame:
         return df[self.cols].copy()
@@ -39,7 +37,6 @@ class DataProcessor:
             self.col_deaths: "deaths",
             self.col_year: "year",
             self.col_tunit: self.tunit,
-            self.col_population: "population"
         }
         return df.rename(columns=col_names_dict)
 
