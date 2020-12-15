@@ -56,7 +56,7 @@ def test_add_offset(df, data_processor):
     df = data_processor.select_cols(df)
     df = data_processor.rename_cols(df)
     df = data_processor.add_time(df, (2019, 1), (2020, 52))
-    df = data_processor.add_offset(df, 0, "test_population")
+    df = data_processor.add_offset(df, 0, "test_population", np.log)
     assert np.allclose(df["offset_0"], np.log(df["test_population"]))
 
 
@@ -64,7 +64,7 @@ def test_subset_group(df, data_processor):
     df = data_processor.select_cols(df)
     df = data_processor.rename_cols(df)
     df = data_processor.add_time(df, (2019, 1), (2020, 52))
-    df = data_processor.add_offset(df, 0, "test_population")
+    df = data_processor.add_offset(df, 0, "test_population", np.log)
     df = data_processor.subset_group(df, {"test_sex": ["male"]})
     assert all(df["test_sex"] == "male")
 

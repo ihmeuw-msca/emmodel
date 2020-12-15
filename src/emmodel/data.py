@@ -2,7 +2,7 @@
 Data module
 """
 from dataclasses import dataclass, field
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Callable
 
 import numpy as np
 import pandas as pd
@@ -55,8 +55,9 @@ class DataProcessor:
     def add_offset(self,
                    df: pd.DataFrame,
                    offset_id: int,
-                   offset_col: str) -> pd.DataFrame:
-        df[f"offset_{offset_id}"] = np.log(df[offset_col])
+                   offset_col: str,
+                   offset_fun: Callable) -> pd.DataFrame:
+        df[f"offset_{offset_id}"] = offset_fun(df[offset_col])
         return df
 
     def subset_group(self,
@@ -81,14 +82,24 @@ class DataProcessor:
                 time_start: Tuple[int, int] = None,
                 time_end: Tuple[int, int] = None,
                 offset_id: int = 0,
-                offset_col: str = "population",
+                offset_col: str = None,
+                offset_fun: Callable = None,
                 group_specs: Dict[str, List] = None) -> pd.DataFrame:
         time_start = self.get_time_min(df) if time_start is None else time_start
         time_end = self.get_time_max(df) if time_end is None else time_end
         group_specs = dict() if group_specs is None else group_specs
+
+        if offset_col is None:
+            offset_col = f"offset_{offset_id}"
+            df[offset_col] = 0.0
+            offset_fun = None
+
+        if offset_fun is None:
+            def offset_fun(x): return x
+
         df = self.select_cols(df)
         df = self.rename_cols(df)
         df = self.add_time(df, time_start, time_end)
-        df = self.add_offset(df, offset_id, offset_col)
+        df = self.add_offset(df, offset_id, offset_col, offset_fun)
         df = self.subset_group(df, group_specs)
         return df
