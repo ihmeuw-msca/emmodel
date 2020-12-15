@@ -48,10 +48,10 @@ class DataProcessor:
                  time_start: Tuple[int, int],
                  time_end: Tuple[int, int]) -> pd.DataFrame:
         df["time"] = (df["year"] - time_start[0])*self.tunits_per_year + \
-            (df[self.tunit] - time_start[1])
+            (df[self.tunit] - time_start[1]) + 1
         time_lb = 1
         time_ub = (time_end[0] - time_start[0])*self.tunits_per_year + \
-            (time_end[1] - time_start[1])
+            (time_end[1] - time_start[1]) + 1
         df = df[(df["time"] >= time_lb) & (df["time"] <= time_ub)]
         return df.reset_index(drop=True)
 
