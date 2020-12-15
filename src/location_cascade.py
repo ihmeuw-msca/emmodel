@@ -6,7 +6,7 @@ import regmod
 
 from emmodel.model import ExcessMortalityModel
 from emmodel.cascade import Cascade, CascadeSpecs
-from emmodel.variable import ModelVariables, TimeModelVariables, YearModelVariables
+from emmodel.variable import ModelVariables, TimeModelVariables, SeasonalityModelVariables
 from emmodel.data import DataProcessor
 
 
@@ -43,7 +43,7 @@ def get_location_specific_prediction(df):
     time_variable = regmod.variable.SplineVariable("time", spline_specs=spline_specs)
 
     variables = [
-        YearModelVariables([year_variable]),
+        SeasonalityModelVariables([year_variable]),
         TimeModelVariables([time_variable])
     ]
 
