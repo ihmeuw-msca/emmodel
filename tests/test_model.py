@@ -5,7 +5,7 @@ import pytest
 import numpy as np
 import pandas as pd
 import regmod
-from emmodel.variable import YearModelVariables, TimeModelVariables
+from emmodel.variable import SeasonalityModelVariables, TimeModelVariables
 from emmodel.model import ExcessMortalityModel
 
 
@@ -26,14 +26,14 @@ def df():
 
 
 @pytest.fixture
-def year_model_variables():
+def seasonality_model_variables():
     variables = [
         regmod.variable.SplineVariable(
             "week",
             spline_specs=regmod.utils.SplineSpecs(knots=np.linspace(0.0, 1.0, 5),
                                                   degree=3))
     ]
-    return YearModelVariables(variables)
+    return SeasonalityModelVariables(variables)
 
 
 @pytest.fixture
@@ -45,6 +45,6 @@ def time_model_variables():
     return TimeModelVariables(variables)
 
 
-def test_model(df, year_model_variables, time_model_variables):
-    model = ExcessMortalityModel(df, [year_model_variables, time_model_variables])
+def test_model(df, seasonality_model_variables, time_model_variables):
+    model = ExcessMortalityModel(df, [seasonality_model_variables, time_model_variables])
     assert len(model.data) == 2

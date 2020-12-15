@@ -33,11 +33,11 @@ class ModelVariables:
         }
 
 
-class YearModelVariables(ModelVariables):
+class SeasonalityModelVariables(ModelVariables):
     def __init__(self, variables: List[regmod.variable.Variable]):
         super().__init__(variables)
         if not ("week" in self.var_names or "month" in self.var_names):
-            raise ValueError("YearModelVariables must include 'week' or 'month'.")
+            raise ValueError("SeasonalityModelVariables must include 'week' or 'month'.")
         tunit = "week" if "week" in self.var_names else "month"
         self.tunit_var = self.var_dict[tunit]
 
