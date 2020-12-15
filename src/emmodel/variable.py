@@ -38,17 +38,17 @@ class SeasonalityModelVariables(ModelVariables):
         super().__init__(variables)
         if not ("week" in self.var_names or "month" in self.var_names):
             raise ValueError("SeasonalityModelVariables must include 'week' or 'month'.")
-        tunit = "week" if "week" in self.var_names else "month"
-        self.tunit_var = self.var_dict[tunit]
+        dtime = "week" if "week" in self.var_names else "month"
+        self.dtime_var = self.var_dict[dtime]
 
     def get_model(self, data: regmod.data.Data) -> regmod.model.PoissonModel:
-        self.tunit_var.check_data(data)
+        self.dtime_var.check_data(data)
         mat = np.vstack([
-            self.tunit_var.spline.design_dmat(self.tunit_var.spline.knots[0], order=i) -
-            self.tunit_var.spline.design_dmat(self.tunit_var.spline.knots[-1] + 1, order=i, r_extra=True)
+            self.dtime_var.spline.design_dmat(self.dtime_var.spline.knots[0], order=i) -
+            self.dtime_var.spline.design_dmat(self.dtime_var.spline.knots[-1] + 1, order=i, r_extra=True)
             for i in range(1)
         ])
-        self.tunit_var.add_priors(regmod.prior.LinearUniformPrior(mat=mat, ub=0.0, lb=0.0))
+        self.dtime_var.add_priors(regmod.prior.LinearUniformPrior(mat=mat, ub=0.0, lb=0.0))
         return regmod.model.PoissonModel(data, self.variables, use_offset=True)
 
 
