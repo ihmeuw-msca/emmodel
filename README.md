@@ -3,7 +3,7 @@
 # Excess Mortality Model
 
 This package contains the excess mortality model accounting for seasonality pattern and yearly trend.
-It also contains a experimental "Cascade" frame work for hierarchical model.
+It also contains a experimental "Cascade" framework for hierarchical model.
 
 ## Install
 To install the package
