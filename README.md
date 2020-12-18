@@ -1,3 +1,3 @@
-[![Build Status](https://travis-ci.com/ihmeuw-msca/emmodel.svg?branch=main)](https://travis-ci.com/ihmeuw-msca/emmodel)
+[![Build Status](https://github.com/ihmeuw-msca/emmodel/workflows/python-build/badge.svg)](https://github.com/ihmeuw-msca/emmodel/actions)
 
 # Excess Mortality Model
