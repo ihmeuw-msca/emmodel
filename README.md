@@ -1,4 +1,5 @@
 [![Build Status](https://github.com/ihmeuw-msca/emmodel/workflows/python-build/badge.svg)](https://github.com/ihmeuw-msca/emmodel/actions)
+[![PyPI Version](https://badge.fury.io/py/emmodel.svg)](https://badge.fury.io/py/emmodel)
 
 # Excess Mortality Model
 
