@@ -1,220 +1,192 @@
-import os
-import numpy as np 
-import pandas as pd 
-import pickle
+from pathlib import Path
+from typing import List, Dict
+from dataclasses import dataclass, field
+
 import matplotlib.pyplot as plt
-import regmod 
+import numpy as np
+import pandas as pd
+from regmod.variable import Variable, SplineVariable
+from regmod.utils import SplineSpecs
 
-from emmodel.model import ExcessMortalityModel
 from emmodel.cascade import Cascade, CascadeSpecs
-from emmodel.variable import ModelVariables, TimeModelVariables, SeasonalityModelVariables
 from emmodel.data import DataProcessor
+from emmodel.model import ExcessMortalityModel
+from emmodel.variable import (ModelVariables,
+                              SeasonalityModelVariables,
+                              TimeModelVariables)
 
 
-def run_first_stage(data_folder, result_folder, suffix, is_saving_first_stage=False):
-    data_files = os.listdir(data_folder)
-    lst_df = []
-    for data_file in data_files:
-        loc = data_file.split(".csv")[0]
-        if loc in ['AUS', 'BRA', 'NZL']:
-            continue
-        df = pd.read_csv(os.path.join(data_folder, f"{loc}.csv"))
-        time_unit = df.time_unit.unique()
-        if len(time_unit) == 1:
-            # Process locations with weekly data for now
-            if time_unit[0] == 'month':
-                continue
-        else:
-            raise Exception("More than one time unit.")
-        # Fill in the NaNs with zero.
-        df['deaths_covid'] = df['deaths_covid'].fillna(0)
-        df = df[~df.deaths.isnull()]
-        df_pred, model1 = get_location_specific_prediction(df)
-        df_pred['loc_name'] = loc
-        if is_saving_first_stage:
-            save_first_stage(df_pred, model1, result_folder, suffix, loc)
-        lst_df.append(df_pred)
-    df_all_location = pd.concat(lst_df)
-    return df_all_location
+time_start = (2010, 1)
+time_end_mortality_pattern = {
+    "week": (2020, 8),
+    "month": (2020, 2)
+}
+time_end_deaths_covid = {
+    "week": (2020, 36),
+    "month": (2020, 9)
+}
+default_spline_specs = SplineSpecs(
+    knots=np.linspace(0.0, 1.0, 5),
+    degree=3,
+    knots_type="rel_domain"
+)
+level_masks = [10.0]
+prior_masks = {}
 
 
-def get_location_specific_prediction(df):
-    dp1 = DataProcessor(
-        col_deaths="deaths",
-        col_year="year_start",
-        col_dtime="time_start",
-        col_covs=["age_name", "sex", "population", "deaths_covid", "location_id"],
-        dtime_unit="week"
-    )
-    year_start = df[dp1.col_year].min()
-    tunit_start = df.loc[df[dp1.col_year]==year_start, dp1.col_dtime].min()
-    if year_start < 2010:
-        year_start = 2010
-        tunit_start = 1
-    time_start = (year_start, tunit_start)
-    df1 = dp1.process(df,
-                      time_end=(2020, 8),
-                      group_specs={"age_name": ["0 to 125"], "sex": ["all"]},
-                      offset_col="population",
-                      offset_fun=np.log)
-    # Use time_start
-    # df1 = dp1.process(df,
-    #                   time_start=time_start,
-    #                   time_end=(2020, 8),
-    #                   group_specs={"age_name": ["0 to 125"], "sex": ["all"]},
-    #                   offset_col="population",
-    #                   offset_fun=np.log)
-    df1['deaths_covid'] = df1['deaths_covid'].fillna(0)
-    spline_specs = regmod.utils.SplineSpecs(
-        knots=np.linspace(0.0, 1.0, 5),
-        degree=3,
-        knots_type="rel_domain"
-    )
-    week_variable = regmod.variable.SplineVariable("week", spline_specs=spline_specs)
-    time_variable = regmod.variable.SplineVariable("time", spline_specs=spline_specs)
-    variables = [
-        SeasonalityModelVariables([week_variable]),
-        TimeModelVariables([time_variable])
-    ]
+@dataclass
+class DataInterface:
+    data_folder: str
+    results_folder: str = field(default="./results")
+    locations: List[str] = field(init=False)
+    location_dtime_units: Dict[str, str] = field(init=False)
 
-    model1 = ExcessMortalityModel(df1, variables)
-    model1.run_models()
-    df1_pred = dp1.process(df,
-                           time_end=(2020, 36),
-                           group_specs={"age_name": ["0 to 125"], "sex": ["all"]},
-                           offset_col="population",
-                           offset_fun=np.log)
-    df1_pred = model1.predict(df1_pred)
-    df1_pred["death_rate_covid"] = df1_pred.deaths_covid/df1_pred.population
-    return df1_pred, model1
+    def __post_init__(self):
+        self.data_folder = Path(self.data_folder)
+        self.results_folder = Path(self.results_folder)
 
+        if not (self.data_folder.exists() and self.data_folder.is_dir()):
+            raise ValueError("`data_folder` must be a path to an existing folder.")
+        if self.results_folder.exists() and self.results_folder.is_dir():
+            raise ValueError("`result_folder` must be a path to a folder.")
 
-def process_first_stage(df1_pred):
-    dp = DataProcessor(
+        if not self.results_folder.exists():
+            self.results_folder.mkdir()
+
+        self.locations = self.get_locations()
+        self.location_dtime_units = self.get_location_dtime_units()
+
+    def get_locations(self) -> List[str]:
+        data_files = self.data_folder.listdir()
+        return [data_file.split(".csv")[0] for data_file in data_files]
+
+    def get_location_dtime_units(self) -> Dict[str, str]:
+        location_dtime_units = {}
+        for location in self.locations:
+            df = pd.read_csv(self.data_folder / f"{location}.csv", nrows=1)
+            location_dtime_units[location] = df.time_unit[0]
+        return location_dtime_units
+
+    def get_dp(self, location: str) -> DataProcessor:
+        return DataProcessor(
             col_deaths="deaths",
-            col_year="year",
-            col_dtime="week",
-            col_covs=["age_name", "sex", "offset_2", 
-            "death_rate_covid", "location_id", "loc_name"],
-            dtime_unit="week"
+            col_year="year_start",
+            col_dtime="time_start",
+            col_covs=["age_name", "sex", "population", "deaths_covid", "location_id"],
+            dtime_unit=self.location_dtime_units[location]
         )
-    # year_start = df1_pred[dp.col_year].min()
-    # tunit_start = df1_pred.loc[df1_pred[dp.col_year]==year_start, dp.col_dtime].min()
-    # if year_start < 2010:
-    #     year_start = 2010
-    #     tunit_start = 1
-    # time_start = (year_start, tunit_start)
-    df = dp.process(df1_pred, offset_col="offset_2")
-    return df
+
+    def read_data(self, locations: List[str] = None) -> Dict[str, pd.DataFrame]:
+        locations = self.locations if locations is None else locations
+        data = {}
+        for location in locations:
+            dp = self.get_dp(location)
+            df = pd.read_csv(self.data_folder / f"{location}.csv")
+            df = dp.select_cols(df)
+            df = dp.subset_group(df, {"age_name": ["0 to 125"], "sex": ["all"]})
+            df = df.fillna(0.0)
+            data[location] = df
+        return data if len(data) > 1 else data[locations[0]]
+
+    def write_results(self, results: Dict[str, pd.DataFrame]):
+        for location, df in results.items:
+            df.to_csv(self.results_folder / f"{location}.csv", index=False)
 
 
-def run_second_stage(df_all_location, covid_variable="death_rate_covid"):
-    location_ids = df_all_location.location_id.unique()
-    df_location_specific = {}
-    df_all_location = process_first_stage(df_all_location)
-    for loc in location_ids:
-        df_location_specific[loc] = df_all_location.loc[df_all_location.location_id == loc]
-    covid_variable = regmod.variable.Variable(covid_variable)
+def fit_mortality_patterns(di: DataInterface,
+                           exclude_locations: List[str] = None) -> Dict[str, pd.DataFrame]:
+    exclude_locations = [] if exclude_locations is None else exclude_locations
+    selected_locations = [location for location in di.locations if location not in exclude_locations]
+    data = di.read_data(selected_locations)
+
+    mortality_patterns = {}
+    for location in selected_locations:
+        dp = di.get_dp(location)
+        df = dp.process(data[location],
+                        time_start=time_start,
+                        time_end=time_end_mortality_pattern[dp.dtime_unit],
+                        offset_col="population",
+                        offset_fun=np.log)
+
+        seasonality_variable = SplineVariable(dp.dtime_unit, spline_specs=default_spline_specs)
+        time_variable = SplineVariable("time", spline_specs=default_spline_specs)
+        variables = [
+            SeasonalityModelVariables([seasonality_variable]),
+            TimeModelVariables([time_variable])
+        ]
+        model = ExcessMortalityModel(df, variables)
+        model.run_models()
+        df_pred = dp.process(df,
+                             time_start=time_start,
+                             time_end=time_end_deaths_covid[dp.dtime_unit])
+        df_pred = model.predict(df_pred)
+        df_pred["death_rate_covid"] = df_pred.deaths_covid/df_pred.population
+        df_pred["mortality_pattern"] = df_pred.deaths_pred
+        df_pred["offset_0"] = df_pred.offset_2
+        mortality_patterns[location] = df_pred
+
+    return mortality_patterns
+
+
+def fit_deaths_covid(di: DataInterface,
+                     mortality_patterns: Dict[str, pd.DataFrame],
+                     save_plots: bool = True,
+                     save_coefs: bool = True,
+                     save_results: bool = True) -> Dict[str, pd.DataFrame]:
+    df_all = pd.concat(list(mortality_patterns.values()))
+    covid_variable = Variable("death_rate_covid")
     variables = [ModelVariables([covid_variable])]
-    prior_masks = {}
-    level_masks = [10.0]
-
     specs = CascadeSpecs(variables,
                          prior_masks=prior_masks,
                          level_masks=level_masks)
 
     # create level 0 model
-    cascade_all_location = Cascade(df_all_location, specs, level_id=0)
+    cmodel_all = Cascade(df_all, specs, level_id=0, name="all")
 
     # create level 1 model
-    cascade_location_specifics = [
-        Cascade(df_location_specific[location_group], specs, level_id=1)
-        for location_group in location_ids
+    cmodel_locations = [
+        Cascade(df, specs, level_id=1, name=location)
+        for location, df in mortality_patterns.items()
     ]
-    cascade_all_location.add_children(cascade_location_specifics)
-    cascade_all_location.run_models()
-    return cascade_all_location, cascade_location_specifics
+    cmodel_all.add_children(cmodel_locations)
+    cmodel_all.run_models()
 
+    final_results = {}
+    names = []
+    coefs = []
+    for cmodel in cmodel_locations:
+        df = cmodel.model.df
+        df = df.drop(columns=[col for col in df.columns if "offset" in col])
 
-def plot_residual(df, result_folder, loc):
-    df['week_yr'] = pd.to_datetime(df['year'].astype(str) \
-        + " " + df['week'].astype(str) + ' 1', format='%Y %U %w')
-    plt.figure(figsize=(12,8))
-    plt.plot(df['week_yr'], df['residuals'])
-    plt.axhline(y=0,color='k')
-    plt.title(loc)
-    plt.savefig(os.path.join(result_folder, f"{loc}_residuals.pdf"))
+        if save_plots:
+            ax = cmodel.model.plot_model(title=cmodel.name, name=cmodel.name)
+            ax.plot(df.time, df.mortality_pattern, color="#E7A94D")
+            plt.savefig(di.results_folder / f"{cmodel.name}.pdf", bbox_inches="tight")
+        final_results[cmodel.name] = df
+        names.append(cmodel.name)
+        coefs.append(cmodel.model.results[0]["coefs"][0])
 
+    final_coefs = pd.DataFrame({
+        "location": names,
+        "coef": coefs
+    })
 
-def save_first_stage(df_all_location, model, result_folder, suffix, loc):
-    df_all_location['fitted_values'] = np.exp(df_all_location[f"offset_{model.num_models}"])
-    df_all_location['residuals'] = df_all_location['fitted_values'] - df_all_location['deaths']
-    df_all_location.to_csv(os.path.join(result_folder, f"{loc}_{suffix}.csv"), index=False)
-    plot_residual(df_all_location, result_folder, loc)
-    df_all_location = df_all_location.drop(columns=['fitted_values', 'residuals'], axis=1)
-    return
+    if save_coefs:
+        final_coefs.to_csv(di.results_folder / "coefs.csv", index=False)
 
+    if save_results:
+        di.write_results(final_results)
 
-def save_results(cascade_all_location, cascade_location_specifics, 
-    result_folder, suffix, save_model=False, save_prediction=False):
-    """Plot model and save results."""
-    lst_coef = []
-    for cascade_loc in cascade_location_specifics:
-        cascade_loc.df['fitted_values'] = np.exp(cascade_loc.df[f"offset_{cascade_loc.model.num_models}"])
-
-        mae = np.mean(np.abs(cascade_loc.df.fitted_values - cascade_loc.df.deaths))
-        # Extract coefficients
-        coef = cascade_loc.model.results[0]['coefs'][0]
-        loc = cascade_loc.df.loc_name.unique()[0]
-        df_coef = pd.DataFrame({'loc':[loc], 'coef':[coef], 'mae': [mae]})
-        lst_coef.append(df_coef)
-        # Plot
-        name = f"{loc}_{suffix}"
-        title = f"loc: {loc}; MAE: {round(mae)}; coef: {round(coef, 4)}"
-        cascade_loc.model.plot_model(folder=result_folder, name=name, title=title)
-        if save_prediction:
-            cascade_loc.df.to_csv(os.path.join(result_folder, f"{loc}_{suffix}.csv"), 
-                index=False)
-        # Save location specific model
-        if save_model:
-            with open(os.path.join(result_folder, 
-                f"location_specific_{loc}_{suffix}.pkl"), "wb") as f_write:
-                pickle.dump(cascade_loc, f_write)
-
-    df_coef = pd.concat(lst_coef)
-    df_coef.sort_values('coef').to_csv(
-        os.path.join(result_folder, f"coefs_{suffix}.csv"), index=False
-        )
+    return final_results
 
 
 def main():
-    # data_folder = "/Users/jiaweihe/Downloads/mortality/data"
-    data_folder = "/home/j/temp/jiaweihe/mortality/2020-12-10-12-52/outputs"
-    time_stamp = "2020-12-10-12-52"
-    level_mask = 10
-    use_cov = True
-    #["deaths_covid", "deaths_covid_log", "mortality_covid", "mortality_covid_log"]:
-    for covid_variable in ["death_rate_covid"]: 
-        if not use_cov:
-            suffix = "no_covid_cov"
-            # result_folder = f"/Users/jiaweihe/Downloads/mortality/results/{suffix}"
-            result_folder = f"/ihme/mortality/covid_em_estimate/{time_stamp}/emmodel/{suffix}"
-        else:
-            suffix = f"{covid_variable}_{level_mask}"
-            # result_folder = f"/Users/jiaweihe/Downloads/mortality/results/{covid_variable}_{level_mask}"
-            result_folder = f"/ihme/mortality/covid_em_estimate/{time_stamp}/emmodel/{covid_variable}_{level_mask}"
-
-        if not os.path.exists(result_folder):
-            os.mkdir(result_folder)
-
-        df_all_location = run_first_stage(data_folder, result_folder, suffix, 
-            is_saving_first_stage=False)
-
-        if use_cov:
-            cascade_all_location, cascade_location_specifics = \
-                run_second_stage(df_all_location, covid_variable=covid_variable)
-            save_results(cascade_all_location, cascade_location_specifics, 
-                result_folder, suffix=suffix, save_prediction=True)
+    data_folder = ""
+    results_folder = ""
+    di = DataInterface(data_folder, results_folder)
+    mortality_patterns = fit_mortality_patterns(di)
+    fit_deaths_covid(mortality_patterns, di,
+                     save_plots=True, save_coefs=True, save_results=True)
 
 
 if __name__ == '__main__':
