@@ -53,25 +53,26 @@ class ExcessMortalityModel:
         for i in range(self.num_models):
             self.data[i].attach_df(df)
             pred = np.log(self.models[i].parameters[0].get_param(
-                self.results[i], self.data[i]
+                self.results[i]["coefs"], self.data[i]
             ))
             df[f"offset_{i + 1}"] = pred
+            self.data[i].detach_df()
         df["deaths_pred"] = np.exp(pred)
         return df
 
-    def plot_model(self, ax=None, title=None, folder=None, name="unknown"):
-        tunits_per_year = 52 if "week" in self.df.columns else 12
+    def plot_model(self, df=None, ax=None, title=None, folder=None, name="unknown"):
+        df = self.df if df is None else df
+        df = self.predict(df)
+        tunits_per_year = 52 if "week" in df.columns else 12
 
-        years = self.df.year.unique()
-        year_heads = (years - self.df.year.min())*tunits_per_year + 1
+        years = df.year.unique()
+        year_heads = (years - df.year.min())*tunits_per_year + 1
 
         if ax is None:
             ax = plt.subplots(1, figsize=(2.5*len(years), 5))[1]
 
-        ax.scatter(self.df.time, self.df.deaths, color="gray")
-        ax.plot(self.df.time,
-                np.exp(self.df[f"offset_{self.num_models}"]),
-                color="#008080")
+        ax.scatter(df.time, df.deaths, color="gray")
+        ax.plot(df.time, df.deaths_pred, color="#008080")
         ax.set_xticks(year_heads)
         ax.set_xticklabels(years)
         for year_week in year_heads:
