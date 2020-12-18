@@ -27,8 +27,7 @@ def data_processor():
         "test_deaths",
         "test_year",
         "test_week",
-        "test_population",
-        ["test_age", "test_sex", "test_loc"]
+        ["test_age", "test_sex", "test_loc", "test_population"]
     )
 
 
@@ -50,26 +49,36 @@ def test_add_time(df, data_processor):
     df = data_processor.select_cols(df)
     df = data_processor.rename_cols(df)
     df = data_processor.add_time(df, (2019, 1), (2020, 52))
-    assert np.allclose(df.time, np.arange(1, 104))
+    assert np.allclose(df.time, np.arange(1, 105))
 
 
 def test_add_offset(df, data_processor):
     df = data_processor.select_cols(df)
     df = data_processor.rename_cols(df)
     df = data_processor.add_time(df, (2019, 1), (2020, 52))
-    df = data_processor.add_offset(df, 0, "population")
-    assert np.allclose(df["offset_0"], np.log(df["population"]))
+    df = data_processor.add_offset(df, 0, "test_population", np.log)
+    assert np.allclose(df["offset_0"], np.log(df["test_population"]))
 
 
 def test_subset_group(df, data_processor):
     df = data_processor.select_cols(df)
     df = data_processor.rename_cols(df)
     df = data_processor.add_time(df, (2019, 1), (2020, 52))
-    df = data_processor.add_offset(df, 0, "population")
+    df = data_processor.add_offset(df, 0, "test_population", np.log)
     df = data_processor.subset_group(df, {"test_sex": ["male"]})
     assert all(df["test_sex"] == "male")
 
 
+def test_get_time_min(df, data_processor):
+    time_min = data_processor.get_time_min(df)
+    assert time_min == (2019, 1)
+
+
+def test_get_time_max(df, data_processor):
+    time_max = data_processor.get_time_max(df)
+    assert time_max == (2020, 52)
+
+
 def test_process(df, data_processor):
-    df = data_processor.process(df, time_end=(2020, 52))
+    df = data_processor.process(df, time_end=(2020, 52), offset_col="test_population")
     assert df.shape[0] == 104
