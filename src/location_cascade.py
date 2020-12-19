@@ -232,7 +232,7 @@ def main():
     suffix = "test_linear"
 
     if use_cluster:
-        data_folder = f"/home/j/temp/jiaweihe/mortality/{time_start}/outputs"
+        data_folder = f"/home/j/temp/jiaweihe/mortality/{time_stamp}/outputs"
         results_folder = f"/ihme/mortality/covid_em_estimate/{time_stamp}/emmodel/{suffix}"
     else:
         data_folder = "/Users/jiaweihe/Downloads/mortality/data"
