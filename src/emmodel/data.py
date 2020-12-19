@@ -80,8 +80,19 @@ class DataProcessor:
                 offset_col: str = None,
                 offset_fun: Callable = None,
                 group_specs: Dict[str, List] = None) -> pd.DataFrame:
-        time_start = self.get_time_min(df) if time_start is None else time_start
-        time_end = self.get_time_max(df) if time_end is None else time_end
+        time_min = self.get_time_min(df)
+        time_max = self.get_time_max(df)
+        time_start = time_min if time_start is None else time_start
+        time_end = time_max if time_end is None else time_end
+
+        if time_start[0] < time_min[0] or (time_start[0] == time_min[0] and
+                                           time_start[1] < time_min[1]):
+            time_start = time_min
+
+        if time_end[0] > time_max[0] or (time_end[0] == time_max[0] and
+                                         time_end[1] > time_max[1]):
+            time_end = time_max
+
         group_specs = dict() if group_specs is None else group_specs
 
         if offset_col is None:

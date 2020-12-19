@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import List, Dict
 from dataclasses import dataclass, field
@@ -47,7 +48,7 @@ class DataInterface:
 
         if not (self.data_folder.exists() and self.data_folder.is_dir()):
             raise ValueError("`data_folder` must be a path to an existing folder.")
-        if self.results_folder.exists() and self.results_folder.is_dir():
+        if self.results_folder.exists() and not self.results_folder.is_dir():
             raise ValueError("`result_folder` must be a path to a folder.")
 
         if not self.results_folder.exists():
@@ -57,7 +58,7 @@ class DataInterface:
         self.location_dtime_units = self.get_location_dtime_units()
 
     def get_locations(self) -> List[str]:
-        data_files = self.data_folder.listdir()
+        data_files = os.listdir(self.data_folder)
         return [data_file.split(".csv")[0] for data_file in data_files]
 
     def get_location_dtime_units(self) -> Dict[str, str]:
@@ -89,7 +90,7 @@ class DataInterface:
         return data if len(data) > 1 else data[locations[0]]
 
     def write_results(self, results: Dict[str, pd.DataFrame]):
-        for location, df in results.items:
+        for location, df in results.items():
             df.to_csv(self.results_folder / f"{location}.csv", index=False)
 
 
@@ -107,7 +108,6 @@ def fit_mortality_patterns(di: DataInterface,
                         time_end=time_end_mortality_pattern[dp.dtime_unit],
                         offset_col="population",
                         offset_fun=np.log)
-
         seasonality_variable = SplineVariable(dp.dtime_unit, spline_specs=default_spline_specs)
         time_variable = SplineVariable("time", spline_specs=default_spline_specs)
         variables = [
@@ -116,9 +116,11 @@ def fit_mortality_patterns(di: DataInterface,
         ]
         model = ExcessMortalityModel(df, variables)
         model.run_models()
-        df_pred = dp.process(df,
+        df_pred = dp.process(data[location],
                              time_start=time_start,
-                             time_end=time_end_deaths_covid[dp.dtime_unit])
+                             time_end=time_end_deaths_covid[dp.dtime_unit],
+                             offset_col="population",
+                             offset_fun=np.log)
         df_pred = model.predict(df_pred)
         df_pred["death_rate_covid"] = df_pred.deaths_covid/df_pred.population
         df_pred["mortality_pattern"] = df_pred.deaths_pred
@@ -162,6 +164,7 @@ def fit_deaths_covid(di: DataInterface,
             ax = cmodel.model.plot_model(title=cmodel.name, name=cmodel.name)
             ax.plot(df.time, df.mortality_pattern, color="#E7A94D")
             plt.savefig(di.results_folder / f"{cmodel.name}.pdf", bbox_inches="tight")
+            plt.close("all")
         final_results[cmodel.name] = df
         names.append(cmodel.name)
         coefs.append(cmodel.model.results[0]["coefs"][0])
@@ -177,7 +180,7 @@ def fit_deaths_covid(di: DataInterface,
     if save_results:
         di.write_results(final_results)
 
-    return final_results
+    return final_results, final_coefs
 
 
 def main():
@@ -185,7 +188,7 @@ def main():
     results_folder = ""
     di = DataInterface(data_folder, results_folder)
     mortality_patterns = fit_mortality_patterns(di)
-    fit_deaths_covid(mortality_patterns, di,
+    fit_deaths_covid(di, mortality_patterns,
                      save_plots=True, save_coefs=True, save_results=True)
 
 
