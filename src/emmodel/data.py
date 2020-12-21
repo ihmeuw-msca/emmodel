@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+import yaml
 import numpy as np
 import pandas as pd
 
@@ -14,9 +15,6 @@ import pandas as pd
 class DataManager:
     i_folder: str
     o_folder: str
-    col_year: str
-    col_time: str
-    col_data: List[str] = field(default_factory=list)
 
     def __post_init__(self):
         self.i_folder = Path(self.i_folder)
@@ -30,22 +28,18 @@ class DataManager:
         if not self.o_folder.exists():
             self.o_folder.mkdir()
 
-        self.locations = self.get_locations()
-        self.time_units = self.get_time_units()
+        self.meta = self.get_meta()
+        self.locations = list(self.meta.keys())
 
-    def get_locations(self) -> List[str]:
-        data_files = os.listdir(self.i_folder)
-        return [data_file.strip(".csv") for data_file in data_files]
-
-    def get_time_units(self) -> Dict[str, str]:
-        time_units = {}
-        for location in self.locations:
-            df = pd.read_csv(self.i_folder / f"{location}.csv", nrows=1)
-            time_units[location] = df.time_unit[0]
-        return time_units
+    def get_meta(self):
+        with open(self.i_folder / "meta.yaml", "r") as f:
+            meta = yaml.load(f, Loader=yaml.FullLoader)
+        default = meta.pop("default")
+        for location in meta:
+            meta[location] = {**default, **meta[location]}
+        return meta
 
     def read_data(self,
-                  time_start: Dict,
                   group_specs: Dict,
                   exclude_locations: List[str] = None) -> Dict[str, pd.DataFrame]:
         exclude_locations = [] if exclude_locations is None else exclude_locations
@@ -53,28 +47,34 @@ class DataManager:
         for location in self.locations:
             if location in exclude_locations:
                 continue
+            col_year = self.meta[location]["col_year"]
+            col_time = self.meta[location]["col_time"]
+            col_data = self.meta[location]["col_data"]
             df = pd.read_csv(self.i_folder / f"{location}.csv")
-            df = select_cols(df, [self.col_year, self.col_time] + self.col_data)
+            df = select_cols(df, [col_year, col_time] + col_data)
             df = select_groups(df, group_specs)
             df = add_time(df,
-                          self.col_year,
-                          self.col_time,
-                          time_start,
-                          self.time_units[location])
+                          col_year,
+                          col_time,
+                          self.meta[location]["time_start"],
+                          self.meta[location]["time_unit"])
             df = df.fillna(0.0)
             data[location] = df
         return data
 
     def truncate_time(self,
                       data: Dict[str, pd.DataFrame],
-                      time_end: Dict[str, Tuple[int, int]]) -> Dict[str, pd.DataFrame]:
+                      time_end_id: int = 0) -> Dict[str, pd.DataFrame]:
         truncated_data = {}
         for location, df in data.items():
+            col_year = self.meta[location]["col_year"]
+            col_time = self.meta[location]["col_time"]
+            time_end = self.meta[location][f"time_end_{time_end_id}"]
             time_ub = get_time_from_yeartime(
-                time_end[location][0],
-                time_end[location][1],
-                get_time_min(df, self.col_year, self.col_time),
-                self.time_units[location]
+                time_end[0],
+                time_end[1],
+                get_time_min(df, col_year, col_time),
+                self.meta[location]["time_unit"]
             )
             df = df[df["time"] <= time_ub]
             truncated_data[location] = df.reset_index(drop=True)

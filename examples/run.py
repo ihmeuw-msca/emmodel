@@ -17,7 +17,7 @@ from regmod.variable import SplineVariable, Variable
 
 
 def get_model_mortality_pattern(data: Dict[str, pd.DataFrame],
-                                col_time: str) -> Dict[str, ExcessMortalityModel]:
+                                meta: Dict) -> Dict[str, ExcessMortalityModel]:
     seas_spline_specs = SplineSpecs(knots=np.linspace(0.0, 1.0, 5),
                                     degree=3,
                                     r_linear=True,
@@ -28,10 +28,10 @@ def get_model_mortality_pattern(data: Dict[str, pd.DataFrame],
     models = {}
     for location, df in data.items():
         df["offset_0"] = np.log(df.population)
-        seas_var = SplineVariable(col_time, spline_specs=seas_spline_specs)
+        seas_var = SplineVariable(meta[location]["col_time"], spline_specs=seas_spline_specs)
         time_var = SplineVariable("time", spline_specs=time_spline_specs)
         variables = [
-            SeasonalityModelVariables([seas_var], col_time),
+            SeasonalityModelVariables([seas_var], meta[location]["col_time"]),
             TimeModelVariables([time_var])
         ]
         models[location] = ExcessMortalityModel(df, variables)
@@ -119,8 +119,8 @@ def plot_models(cmodels: List[Cascade], dmanager: DataManager):
     for cmodel in cmodels:
         df = cmodel.model.df
         ax = plot_data(df,
-                       dmanager.time_units[cmodel.name],
-                       dmanager.col_year)
+                       dmanager.meta[cmodel.name]["time_unit"],
+                       dmanager.meta[cmodel.name]["col_year"])
         ax = plot_model(ax, df, "deaths_pred", color="#008080")
         ax = plot_model(ax, df, "mortality_pattern", color="#E7A94D",
                         linestyle="--")
@@ -133,28 +133,10 @@ def plot_models(cmodels: List[Cascade], dmanager: DataManager):
 
 if __name__ == "__main__":
     # process inputs -----------------------------------------------------------
-    i_folder = "./data"
-    o_folder = "./results"
+    i_folder = "examples/data"
+    o_folder = "examples/results"
     exclude_locations = []
 
-    col_year = "year_start"
-    col_time = "time_start"
-    col_data = ["deaths",
-                "population",
-                "age_name",
-                "sex",
-                "location_id",
-                "deaths_covid"]
-
-    time_start = (2010, 1)  # not location specific
-    time_end_0 = {
-        "USA": (2020, 8),
-        "AUT": (2020, 8)
-    }  # location specific
-    time_end_1 = {
-        "USA": (2020, 36),
-        "AUT": (2020, 36)
-    }  # location specific
     group_specs = {
         "age_name": ["0 to 125"],
         "sex": ["all"]
@@ -169,18 +151,14 @@ if __name__ == "__main__":
 
     # workflow -----------------------------------------------------------------
     # load data
-    dmanager = DataManager(i_folder,
-                           o_folder,
-                           col_year,
-                           col_time,
-                           col_data=col_data)
-    data = dmanager.read_data(time_start, group_specs,
+    dmanager = DataManager(i_folder, o_folder)
+    data = dmanager.read_data(group_specs,
                               exclude_locations=exclude_locations)
-    data_0 = dmanager.truncate_time(data, time_end=time_end_0)
-    data_1 = dmanager.truncate_time(data, time_end=time_end_1)
+    data_0 = dmanager.truncate_time(data, time_end_id=0)
+    data_1 = dmanager.truncate_time(data, time_end_id=1)
 
     # fit mortality patterns
-    models_0 = get_model_mortality_pattern(data_0, col_time=col_time)
+    models_0 = get_model_mortality_pattern(data_0, dmanager.meta)
     data_1 = run_model_mortality_pattern(models_0, data_1)
 
     # fit cascade on covid covariate

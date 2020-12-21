@@ -15,7 +15,8 @@ if __name__ == '__main__':
 
     install_requirements = [
         'regmod',
-        'matplotlib'
+        'matplotlib',
+        'pyyaml'
     ]
 
     test_requirements = [
