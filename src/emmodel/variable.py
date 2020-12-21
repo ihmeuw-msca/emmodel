@@ -43,21 +43,23 @@ class ModelVariables:
 
 
 class SeasonalityModelVariables(ModelVariables):
-    def __init__(self, variables: List[regmod.variable.Variable], **kwargs):
+    def __init__(self,
+                 variables: List[regmod.variable.Variable],
+                 col_time: str,
+                 **kwargs):
         super().__init__(variables, **kwargs)
-        if not ("week" in self.var_names or "month" in self.var_names):
-            raise ValueError("SeasonalityModelVariables must include 'week' or 'month'.")
-        dtime = "week" if "week" in self.var_names else "month"
-        self.dtime_var = self.var_dict[dtime]
+        if not col_time in self.var_names:
+            raise ValueError(f"SeasonalityModelVariables must include {col_time}.")
+        self.time_var = self.var_dict[col_time]
 
     def get_model(self, data: regmod.data.Data) -> regmod.model.PoissonModel:
-        self.dtime_var.check_data(data)
+        self.time_var.check_data(data)
         mat = np.vstack([
-            self.dtime_var.spline.design_dmat(self.dtime_var.spline.knots[0], order=i) -
-            self.dtime_var.spline.design_dmat(self.dtime_var.spline.knots[-1] + 1, order=i, r_extra=True)
+            self.time_var.spline.design_dmat(self.time_var.spline.knots[0], order=i) -
+            self.time_var.spline.design_dmat(self.time_var.spline.knots[-1] + 1, order=i, r_extra=True)
             for i in range(1)
         ])
-        self.dtime_var.add_priors(regmod.prior.LinearUniformPrior(mat=mat, ub=0.0, lb=0.0))
+        self.time_var.add_priors(regmod.prior.LinearUniformPrior(mat=mat, ub=0.0, lb=0.0))
         return super().get_model(data)
 
 
