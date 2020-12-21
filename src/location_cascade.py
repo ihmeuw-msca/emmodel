@@ -18,32 +18,6 @@ from emmodel.variable import (ModelVariables,
                               TimeModelVariables)
 
 
-time_start = (2010, 1)
-time_end_mortality_pattern = {
-    "week": (2020, 8),
-    "month": (2020, 2)
-}
-time_end_deaths_covid = {
-    "week": (2020, 36),
-    "month": (2020, 9)
-}
-default_spline_specs = SplineSpecs(
-    knots=np.linspace(0.0, 1.0, 5),
-    degree=3,
-    knots_type="rel_domain"
-)
-
-r_linear_spline_specs = SplineSpecs(
-    knots=np.linspace(0.0, 1.0, 5),
-    degree=3,
-    knots_type="rel_domain",
-    r_linear=True
-)
-
-level_masks = [100.0, 0.01]
-prior_masks = {}
-
-
 @dataclass
 class DataInterface:
     data_folder: str
@@ -225,7 +199,37 @@ def fit_deaths_covid(di: DataInterface,
     return final_results, final_coefs
 
 
-def main():
+if __name__ == '__main__':
+    time_start = (2010, 1)
+    week_offset = 0
+    month_offset = 0
+
+    time_end_mortality_pattern = {
+        "week": (2020, 8),
+        "month": (2020, 2)
+    }
+
+    time_end_deaths_covid = {
+        "week": (2020, 36),
+        "month": (2020, 9)
+    }
+
+    default_spline_specs = SplineSpecs(
+        knots=np.linspace(0.0, 1.0, 5),
+        degree=3,
+        knots_type="rel_domain"
+    )
+
+    r_linear_spline_specs = SplineSpecs(
+        knots=np.linspace(0.0, 1.0, 5),
+        degree=3,
+        knots_type="rel_domain",
+        r_linear=True
+    )
+
+    level_masks = [100.0, 0.01]
+    prior_masks = {}
+
     use_cluster = False
     time_stamp = "2020-12-10-12-52"
     model_type = 'Linear'
@@ -240,12 +244,8 @@ def main():
     di = DataInterface(data_folder, results_folder)
     # 'CHN_493' is missing data after week 22, which would cause problem for weekly trend.
     mortality_patterns = fit_mortality_patterns(di, model_type=model_type, 
-        exclude_locations=['CHN_493'])
+        exclude_locations=['CHN_493', 'AUS', 'BRA', 'NZL'])
     fit_deaths_covid(di, mortality_patterns,
                      save_plots=True, save_coefs=True, 
                      plot_coefs=True, save_results=True, 
                      model_type=model_type)
-
-
-if __name__ == '__main__':
-    main()
