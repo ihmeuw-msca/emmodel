@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from emmodel.cascade import Cascade, CascadeSpecs
 from emmodel.data import DataManager
-from emmodel.model import ExcessMortalityModel
+from emmodel.model import ExcessMortalityModel, plot_data, plot_model
 from emmodel.variable import (ModelVariables, SeasonalityModelVariables,
                               TimeModelVariables)
 from regmod.prior import UniformPrior
@@ -118,13 +118,13 @@ def run_model_cascade(root_cmodel: Cascade, leaf_cmodels: List[Cascade]) -> Dict
 def plot_models(cmodels: List[Cascade], dmanager: DataManager):
     for cmodel in cmodels:
         df = cmodel.model.df
-        ax = cmodel.model.plot_model(
-            col_year=dmanager.col_year,
-            time_unit=dmanager.time_units[cmodel.name],
-            title=cmodel.name, name=cmodel.name
-        )
-        ax.plot(df.time, df.mortality_pattern,
-                color="#E7A94D", linestyle="--", label="mortality_pattern")
+        ax = plot_data(df,
+                       dmanager.time_units[cmodel.name],
+                       dmanager.col_year)
+        ax = plot_model(ax, df, "deaths_pred", color="#008080")
+        ax = plot_model(ax, df, "mortality_pattern", color="#E7A94D",
+                        linestyle="--")
+        ax.set_title(cmodel.name, loc="left")
         ax.legend()
         plt.savefig(dmanager.o_folder / f"{cmodel.name}.pdf",
                     bbox_inches="tight")
@@ -133,8 +133,8 @@ def plot_models(cmodels: List[Cascade], dmanager: DataManager):
 
 if __name__ == "__main__":
     # process inputs -----------------------------------------------------------
-    i_folder = "../data"
-    o_folder = "../results"
+    i_folder = "./data"
+    o_folder = "./results"
     exclude_locations = []
 
     col_year = "year_start"
