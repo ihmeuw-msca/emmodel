@@ -81,8 +81,13 @@ class DataManager:
             truncated_data[location] = self.truncate_time_location(location, df, time_end_id)
         return truncated_data
 
-    def write_data(self, data: Dict[str, pd.DataFrame]):
+    def write_data(self,
+                   data: Dict[str, pd.DataFrame],
+                   prefix: str = "",
+                   suffix: str = ""):
         for name, df in data.items():
+            name = name.replace(" ", "_")
+            name = "_".join([prefix, name, suffix]).strip("_")
             df.to_csv(self.o_folder / f"{name}.csv", index=False)
 
 
