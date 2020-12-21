@@ -65,6 +65,29 @@ class DataManager:
             data[location] = df
         return data
 
+    def read_time_end(self, exclude_locations: List[str] = None) -> Dict[str, tuple]:
+        exclude_locations = [] if exclude_locations is None else exclude_locations
+        time_end_0 = {}
+        time_end_1 = {}
+        for location in self.locations:
+            if location in exclude_locations:
+                continue
+            else:
+              df = pd.read_csv(self.i_folder / f"{location}.csv")
+              if "time_cutoff" in df.columns.tolist():
+                  time_end_0[location] = tuple(df.loc[0, ['year_cutoff','time_cutoff']])
+              else:
+                  if self.time_units[location] == 'week':
+                      time_end_0[location] = (2020, 8)
+                  else:
+                      time_end_0[location] = (2020, 2)
+
+              if self.time_units[location] == 'week':
+                  time_end_1[location] = (2020, 36)
+              else:
+                  time_end_1[location] = (2020, 9)
+        return time_end_0, time_end_1
+
     def truncate_time(self,
                       data: Dict[str, pd.DataFrame],
                       time_end: Dict[str, Tuple[int, int]]) -> Dict[str, pd.DataFrame]:

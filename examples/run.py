@@ -147,14 +147,7 @@ if __name__ == "__main__":
                 "deaths_covid"]
 
     time_start = (2010, 1)  # not location specific
-    time_end_0 = {
-        "USA": (2020, 8),
-        "AUT": (2020, 8)
-    }  # location specific
-    time_end_1 = {
-        "USA": (2020, 36),
-        "AUT": (2020, 36)
-    }  # location specific
+
     group_specs = {
         "age_name": ["0 to 125"],
         "sex": ["all"]
@@ -176,6 +169,7 @@ if __name__ == "__main__":
                            col_data=col_data)
     data = dmanager.read_data(time_start, group_specs,
                               exclude_locations=exclude_locations)
+    time_end_0, time_end_1 = dmanager.read_time_end(exclude_locations=exclude_locations)
     data_0 = dmanager.truncate_time(data, time_end=time_end_0)
     data_1 = dmanager.truncate_time(data, time_end=time_end_1)
 
