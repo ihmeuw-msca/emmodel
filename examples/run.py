@@ -120,18 +120,20 @@ def run_model_cc(*cmodels: Tuple[Cascade]) -> Dict[str, pd.DataFrame]:
     return results
 
 
-def plot_models(cmodels: List[Cascade], dmanager: DataManager):
-    for cmodel in cmodels:
+def plot_models(cmodels: Dict[str, Cascade], dmanager: DataManager):
+    for name, cmodel in cmodels.items():
         df = cmodel.model.df
+        name = name.replace(" ", "_")
+        location = name.split("_")[0]
         ax = plot_data(df,
-                       dmanager.meta[cmodel.name]["time_unit"],
-                       dmanager.meta[cmodel.name]["col_year"])
+                       dmanager.meta[location]["time_unit"],
+                       dmanager.meta[location]["col_year"])
         ax = plot_model(ax, df, "deaths_pred", color="#008080")
         ax = plot_model(ax, df, "mortality_pattern", color="#E7A94D",
                         linestyle="--")
-        ax.set_title(cmodel.name, loc="left")
+        ax.set_title(name, loc="left")
         ax.legend()
-        plt.savefig(dmanager.o_folder / f"{cmodel.name}.pdf",
+        plt.savefig(dmanager.o_folder / f"{name}.pdf",
                     bbox_inches="tight")
         plt.close("all")
 
@@ -190,7 +192,7 @@ if __name__ == "__main__":
 
     cascade_specs = {
         "prior_masks": {},
-        "level_masks": [100.0, 0.01]
+        "level_masks": [100.0, 1e-2]
     }
     model_type = "Linear"
     use_death_rate_covid = False
@@ -200,3 +202,6 @@ if __name__ == "__main__":
     data_age_mp = fit_age_mp(dmanager)
     data_age_cc = fit_age_cc(data_age_mp, dmanager, cascade_specs, model_type, use_death_rate_covid)
     dmanager.write_data(data_age_cc[1])
+    leaf_cmodels = data_age_cc[0][1]
+    leaf_cmodels.update(flatten_dict(data_age_cc[0][2]))
+    plot_models(leaf_cmodels, dmanager)
