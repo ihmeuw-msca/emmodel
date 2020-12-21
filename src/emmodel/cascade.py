@@ -2,7 +2,7 @@
 Cascade module
 """
 from copy import deepcopy
-from typing import List, Any, Dict, Union
+from typing import List, Dict, Union
 from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd

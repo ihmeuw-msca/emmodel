@@ -1,100 +1,129 @@
 """
 Data module
 """
+import os
 from dataclasses import dataclass, field
-from typing import List, Tuple, Dict, Callable
+from pathlib import Path
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
 
 
 @dataclass
-class DataProcessor:
-    col_deaths: str
+class DataManager:
+    i_folder: str
+    o_folder: str
     col_year: str
-    col_dtime: str
-    col_covs: List[str] = field(default_factory=list)
-    dtime_unit: str = "week"
+    col_time: str
+    col_data: List[str] = field(default_factory=list)
 
     def __post_init__(self):
-        if self.dtime_unit not in ["week", "month"]:
-            raise ValueError("Unrecognized dtime unit, must be 'week' or 'month'.")
-        self.dtimes_per_year = 52 if self.dtime_unit == "week" else 12
-        self.cols = np.unique([self.col_deaths,
-                               self.col_year,
-                               self.col_dtime] + self.col_covs)
+        self.i_folder = Path(self.i_folder)
+        self.o_folder = Path(self.o_folder)
 
-    def select_cols(self, df: pd.DataFrame) -> pd.DataFrame:
-        return df[self.cols].copy()
+        if not (self.i_folder.exists() and self.i_folder.is_dir()):
+            raise ValueError("`i_folder` must be a path to an existing folder.")
+        if self.o_folder.exists() and not self.o_folder.is_dir():
+            raise ValueError("`o_folder` must be a path to a folder.")
 
-    def rename_cols(self, df: pd.DataFrame) -> pd.DataFrame:
-        col_names_dict = {
-            self.col_deaths: "deaths",
-            self.col_year: "year",
-            self.col_dtime: self.dtime_unit,
-        }
-        return df.rename(columns=col_names_dict)
+        if not self.o_folder.exists():
+            self.o_folder.mkdir()
 
-    def add_time(self,
-                 df: pd.DataFrame,
-                 time_start: Tuple[int, int],
-                 time_end: Tuple[int, int]) -> pd.DataFrame:
-        df["time"] = (df["year"] - time_start[0])*self.dtimes_per_year + \
-            (df[self.dtime_unit] - time_start[1]) + 1
-        time_lb = 1
-        time_ub = (time_end[0] - time_start[0])*self.dtimes_per_year + \
-            (time_end[1] - time_start[1]) + 1
-        df = df[(df["time"] >= time_lb) & (df["time"] <= time_ub)]
-        return df.reset_index(drop=True)
+        self.locations = self.get_locations()
+        self.time_units = self.get_time_units()
 
-    def add_offset(self,
-                   df: pd.DataFrame,
-                   offset_id: int,
-                   offset_col: str,
-                   offset_fun: Callable) -> pd.DataFrame:
-        df[f"offset_{offset_id}"] = offset_fun(df[offset_col])
-        return df
+    def get_locations(self) -> List[str]:
+        data_files = os.listdir(self.i_folder)
+        return [data_file.strip(".csv") for data_file in data_files]
 
-    def subset_group(self,
-                     df: pd.DataFrame,
-                     group_specs: Dict[str, List]) -> pd.DataFrame:
-        for col, vals in group_specs.items():
-            df = df[df[col].isin(vals)]
-        return df.reset_index(drop=True)
+    def get_time_units(self) -> Dict[str, str]:
+        time_units = {}
+        for location in self.locations:
+            df = pd.read_csv(self.i_folder / f"{location}.csv", nrows=1)
+            time_units[location] = df.time_unit[0]
+        return time_units
 
-    def get_time_min(self, df) -> Tuple[int, int]:
-        year_min = df[self.col_year].min()
-        tunit_min = df[df[self.col_year] == year_min][self.col_dtime].min()
-        return (year_min, tunit_min)
+    def read_data(self,
+                  time_start: Dict,
+                  group_specs: Dict,
+                  exclude_locations: List[str] = None) -> Dict[str, pd.DataFrame]:
+        exclude_locations = [] if exclude_locations is None else exclude_locations
+        data = {}
+        for location in self.locations:
+            if location in exclude_locations:
+                continue
+            df = pd.read_csv(self.i_folder / f"{location}.csv")
+            df = select_cols(df, [self.col_year, self.col_time] + self.col_data)
+            df = select_groups(df, group_specs)
+            df = add_time(df,
+                          self.col_year,
+                          self.col_time,
+                          time_start,
+                          self.time_units[location])
+            df = df.fillna(0.0)
+            data[location] = df
+        return data
 
-    def get_time_max(self, df) -> Tuple[int, int]:
-        year_max = df[self.col_year].max()
-        tunit_max = df[df[self.col_year] == year_max][self.col_dtime].max()
-        return (year_max, tunit_max)
+    def truncate_time(self,
+                      data: Dict[str, pd.DataFrame],
+                      time_end: Dict[str, Tuple[int, int]]) -> Dict[str, pd.DataFrame]:
+        truncated_data = {}
+        for location, df in data.items():
+            time_ub = get_time_from_yeartime(
+                time_end[location][0],
+                time_end[location][1],
+                get_time_min(df, self.col_year, self.col_time),
+                self.time_units[location]
+            )
+            df = df[df["time"] <= time_ub]
+            truncated_data[location] = df.reset_index(drop=True)
+        return truncated_data
 
-    def process(self,
-                df: pd.DataFrame,
-                time_start: Tuple[int, int] = None,
-                time_end: Tuple[int, int] = None,
-                offset_id: int = 0,
-                offset_col: str = None,
-                offset_fun: Callable = None,
-                group_specs: Dict[str, List] = None) -> pd.DataFrame:
-        time_start = self.get_time_min(df) if time_start is None else time_start
-        time_end = self.get_time_max(df) if time_end is None else time_end
-        group_specs = dict() if group_specs is None else group_specs
+    def write_data(self, data: Dict[str, pd.DataFrame]):
+        for name, df in data.items():
+            df.to_csv(self.o_folder / f"{name}.csv", index=False)
 
-        if offset_col is None:
-            offset_col = f"offset_{offset_id}"
-            df[offset_col] = 0.0
-            offset_fun = None
 
-        if offset_fun is None:
-            def offset_fun(x): return x
+def select_cols(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
+    return df[cols].copy()
 
-        df = self.select_cols(df)
-        df = self.rename_cols(df)
-        df = self.add_time(df, time_start, time_end)
-        df = self.add_offset(df, offset_id, offset_col, offset_fun)
-        df = self.subset_group(df, group_specs)
-        return df
+
+def select_groups(df: pd.DataFrame,
+                  group_specs: Dict[str, List]) -> pd.DataFrame:
+    for col, vals in group_specs.items():
+        df = df[df[col].isin(vals)]
+    return df.reset_index(drop=True)
+
+
+def add_time(df: pd.DataFrame,
+             col_year: str,
+             col_time: str,
+             time_start: Tuple[int, int] = (0, 0),
+             time_unit: str = "week") -> pd.DataFrame:
+
+    df["time"] = get_time_from_yeartime(df[col_year],
+                                        df[col_time],
+                                        time_start=time_start,
+                                        time_unit=time_unit)
+    df = df[df.time >= 1].reset_index(drop=True)
+    df.time = df.time - df.time.min() + 1
+    return df.reset_index(drop=True)
+
+
+def get_time_min(df: pd.DataFrame,
+                 col_year: str,
+                 col_time: str) -> Tuple[int, int]:
+    year_min = df[col_year].min()
+    time_min = df.loc[df[col_year] == year_min, col_time].min()
+    return (year_min, time_min)
+
+
+def get_time_from_yeartime(year: np.ndarray,
+                           time: np.ndarray,
+                           time_start: Tuple[int, int],
+                           time_unit: str) -> np.ndarray:
+    if time_unit not in ["week", "month"]:
+        raise ValueError("`time_unit` must be either 'week' or 'month'.")
+    units_per_year = 52 if time_unit == "week" else 12
+    return (year - time_start[0])*units_per_year + time - time_start[1] + 1
