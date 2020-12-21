@@ -130,3 +130,10 @@ dmypy.json
 
 # vscode
 .vscode/
+
+# examples
+examples/data/*.csv
+examples/results/
+
+# mac-os
+.DS_Store
