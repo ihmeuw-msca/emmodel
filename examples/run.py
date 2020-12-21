@@ -135,7 +135,6 @@ if __name__ == "__main__":
     # process inputs -----------------------------------------------------------
     i_folder = "examples/data"
     o_folder = "examples/results"
-    exclude_locations = []
 
     group_specs = {
         "age_name": ["0 to 125"],
@@ -152,8 +151,7 @@ if __name__ == "__main__":
     # workflow -----------------------------------------------------------------
     # load data
     dmanager = DataManager(i_folder, o_folder)
-    data = dmanager.read_data(group_specs,
-                              exclude_locations=exclude_locations)
+    data = dmanager.read_data(group_specs)
     data_0 = dmanager.truncate_time(data, time_end_id=0)
     data_1 = dmanager.truncate_time(data, time_end_id=1)
 

@@ -1,8 +1,7 @@
 """
 Data module
 """
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -53,16 +52,11 @@ class DataManager:
                       self.meta[location]["time_unit"])
         return df.fillna(0.0)
 
-    def read_data(self,
-                  group_specs: Dict,
-                  exclude_locations: List[str] = None) -> Dict[str, pd.DataFrame]:
-        exclude_locations = [] if exclude_locations is None else exclude_locations
-        data = {}
-        for location in self.locations:
-            if location in exclude_locations:
-                continue
-            data[location] = self.read_data_location(location, group_specs)
-        return data
+    def read_data(self, group_specs: Dict) -> Dict[str, pd.DataFrame]:
+        return {
+            location: self.read_data_location(location, group_specs)
+            for location in self.locations
+        }
 
     def truncate_time_location(self,
                                location: str,
