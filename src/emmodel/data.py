@@ -39,6 +39,20 @@ class DataManager:
             meta[location] = {**default, **meta[location]}
         return meta
 
+    def read_data_location(self, location: str, group_specs: Dict) -> pd.DataFrame:
+        col_year = self.meta[location]["col_year"]
+        col_time = self.meta[location]["col_time"]
+        col_data = self.meta[location]["col_data"]
+        df = pd.read_csv(self.i_folder / f"{location}.csv")
+        df = select_cols(df, [col_year, col_time] + col_data)
+        df = select_groups(df, group_specs)
+        df = add_time(df,
+                      col_year,
+                      col_time,
+                      self.meta[location]["time_start"],
+                      self.meta[location]["time_unit"])
+        return df.fillna(0.0)
+
     def read_data(self,
                   group_specs: Dict,
                   exclude_locations: List[str] = None) -> Dict[str, pd.DataFrame]:
@@ -47,37 +61,30 @@ class DataManager:
         for location in self.locations:
             if location in exclude_locations:
                 continue
-            col_year = self.meta[location]["col_year"]
-            col_time = self.meta[location]["col_time"]
-            col_data = self.meta[location]["col_data"]
-            df = pd.read_csv(self.i_folder / f"{location}.csv")
-            df = select_cols(df, [col_year, col_time] + col_data)
-            df = select_groups(df, group_specs)
-            df = add_time(df,
-                          col_year,
-                          col_time,
-                          self.meta[location]["time_start"],
-                          self.meta[location]["time_unit"])
-            df = df.fillna(0.0)
-            data[location] = df
+            data[location] = self.read_data_location(location, group_specs)
         return data
+
+    def truncate_time_location(self,
+                               location: str,
+                               df: pd.DataFrame,
+                               time_end_id: int = 0) -> pd.DataFrame:
+        col_year = self.meta[location]["col_year"]
+        col_time = self.meta[location]["col_time"]
+        time_end = self.meta[location][f"time_end_{time_end_id}"]
+        time_ub = get_time_from_yeartime(
+            time_end[0],
+            time_end[1],
+            get_time_min(df, col_year, col_time),
+            self.meta[location]["time_unit"]
+        )
+        return df[df["time"] <= time_ub].reset_index(drop=True)
 
     def truncate_time(self,
                       data: Dict[str, pd.DataFrame],
                       time_end_id: int = 0) -> Dict[str, pd.DataFrame]:
         truncated_data = {}
         for location, df in data.items():
-            col_year = self.meta[location]["col_year"]
-            col_time = self.meta[location]["col_time"]
-            time_end = self.meta[location][f"time_end_{time_end_id}"]
-            time_ub = get_time_from_yeartime(
-                time_end[0],
-                time_end[1],
-                get_time_min(df, col_year, col_time),
-                self.meta[location]["time_unit"]
-            )
-            df = df[df["time"] <= time_ub]
-            truncated_data[location] = df.reset_index(drop=True)
+            truncated_data[location] = self.truncate_time_location(location, df, time_end_id)
         return truncated_data
 
     def write_data(self, data: Dict[str, pd.DataFrame]):
