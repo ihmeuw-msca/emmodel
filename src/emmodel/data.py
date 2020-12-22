@@ -42,7 +42,7 @@ class DataManager:
         col_year = self.meta[location]["col_year"]
         col_time = self.meta[location]["col_time"]
         col_data = self.meta[location]["col_data"]
-        df = pd.read_csv(self.i_folder / f"{location}.csv")
+        df = pd.read_csv(self.i_folder / f"{location}.csv", low_memory=False)
         df = select_cols(df, [col_year, col_time] + col_data)
         df = select_groups(df, group_specs)
         df = add_time(df,
@@ -50,6 +50,8 @@ class DataManager:
                       col_time,
                       self.meta[location]["time_start"],
                       self.meta[location]["time_unit"])
+        if df.empty:
+            raise ValueError(f"Location {location} has no matching data for {group_specs}.")
         return df.fillna(0.0)
 
     def read_data(self, group_specs: Dict) -> Dict[str, pd.DataFrame]:

@@ -42,6 +42,7 @@ def run_model_mp(models: Dict[str, ExcessMortalityModel],
                  data_pred: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
     results = {}
     for name, model in models.items():
+        print(f"  fit {name}")
         model.run_models()
         data_pred[name]["offset_0"] = np.log(data_pred[name].population)
         df_pred = model.predict(data_pred[name], col_pred="mortality_pattern")
@@ -58,7 +59,7 @@ def get_model_cc(data: Dict[str, Dict[str, pd.DataFrame]],
     if model_type == "Poisson":
         for location_df in data.values():
             for df in location_df.values():
-                df["offset_0"] = df["offset_2"]
+                df["offset_0"] = np.log(df["mortality_pattern"])
     elif model_type == "Linear":
         for location_df in data.values():
             for df in location_df.values():
@@ -120,18 +121,20 @@ def run_model_cc(*cmodels: Tuple[Cascade]) -> Dict[str, pd.DataFrame]:
     return results
 
 
-def plot_models(cmodels: List[Cascade], dmanager: DataManager):
-    for cmodel in cmodels:
+def plot_models(cmodels: Dict[str, Cascade], dmanager: DataManager):
+    for name, cmodel in cmodels.items():
         df = cmodel.model.df
+        name = name.replace(" ", "_")
+        location = name.split("_")[0]
         ax = plot_data(df,
-                       dmanager.meta[cmodel.name]["time_unit"],
-                       dmanager.meta[cmodel.name]["col_year"])
+                       dmanager.meta[location]["time_unit"],
+                       dmanager.meta[location]["col_year"])
         ax = plot_model(ax, df, "deaths_pred", color="#008080")
         ax = plot_model(ax, df, "mortality_pattern", color="#E7A94D",
                         linestyle="--")
-        ax.set_title(cmodel.name, loc="left")
+        ax.set_title(name, loc="left")
         ax.legend()
-        plt.savefig(dmanager.o_folder / f"{cmodel.name}.pdf",
+        plt.savefig(dmanager.o_folder / f"{name}.pdf",
                     bbox_inches="tight")
         plt.close("all")
 
@@ -169,6 +172,7 @@ def fit_age_mp_location(location: str, dmanager: DataManager) -> Dict[str, pd.Da
 def fit_age_mp(dmanager: DataManager) -> Dict[str, Dict[str, pd.DataFrame]]:
     results = {}
     for location in dmanager.locations:
+        print(f"fit {location}")
         results[location] = fit_age_mp_location(location, dmanager)
     return results
 
@@ -185,18 +189,21 @@ def fit_age_cc(data: Dict[str, Dict[str, pd.DataFrame]],
 
 if __name__ == "__main__":
     # process inputs -----------------------------------------------------------
-    i_folder = "examples/data"
-    o_folder = "examples/results"
+    i_folder = "examples/data_all_cause"
+    o_folder = "examples/results_poisson_rate"
 
     cascade_specs = {
         "prior_masks": {},
         "level_masks": [100.0, 0.01]
     }
-    model_type = "Linear"
-    use_death_rate_covid = False
+    model_type = "Poisson"
+    use_death_rate_covid = True
 
     # workflow -----------------------------------------------------------------
     dmanager = DataManager(i_folder, o_folder)
     data_age_mp = fit_age_mp(dmanager)
     data_age_cc = fit_age_cc(data_age_mp, dmanager, cascade_specs, model_type, use_death_rate_covid)
     dmanager.write_data(data_age_cc[1])
+    leaf_cmodels = data_age_cc[0][1]
+    leaf_cmodels.update(flatten_dict(data_age_cc[0][2]))
+    plot_models(leaf_cmodels, dmanager)
