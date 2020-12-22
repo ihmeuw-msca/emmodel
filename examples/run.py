@@ -58,7 +58,7 @@ def get_model_cc(data: Dict[str, Dict[str, pd.DataFrame]],
     if model_type == "Poisson":
         for location_df in data.values():
             for df in location_df.values():
-                df["offset_0"] = df["offset_2"]
+                df["offset_0"] = np.log(df["mortality_pattern"])
     elif model_type == "Linear":
         for location_df in data.values():
             for df in location_df.values():
@@ -194,8 +194,8 @@ if __name__ == "__main__":
         "prior_masks": {},
         "level_masks": [100.0, 1e-2]
     }
-    model_type = "Linear"
-    use_death_rate_covid = False
+    model_type = "Poisson"
+    use_death_rate_covid = True
 
     # workflow -----------------------------------------------------------------
     dmanager = DataManager(i_folder, o_folder)
