@@ -42,7 +42,6 @@ def run_model_mp(models: Dict[str, ExcessMortalityModel],
                  data_pred: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
     results = {}
     for name, model in models.items():
-        print(f"  fit {name}")
         model.run_models()
         data_pred[name]["offset_0"] = np.log(data_pred[name].population)
         df_pred = model.predict(data_pred[name], col_pred="mortality_pattern")
@@ -172,7 +171,6 @@ def fit_age_mp_location(location: str, dmanager: DataManager) -> Dict[str, pd.Da
 def fit_age_mp(dmanager: DataManager) -> Dict[str, Dict[str, pd.DataFrame]]:
     results = {}
     for location in dmanager.locations:
-        print(f"fit {location}")
         results[location] = fit_age_mp_location(location, dmanager)
     return results
 
@@ -189,8 +187,8 @@ def fit_age_cc(data: Dict[str, Dict[str, pd.DataFrame]],
 
 if __name__ == "__main__":
     # process inputs -----------------------------------------------------------
-    i_folder = "examples/data_all_cause"
-    o_folder = "examples/results_poisson_rate"
+    i_folder = "examples/data"
+    o_folder = "examples/results"
 
     cascade_specs = {
         "prior_masks": {},

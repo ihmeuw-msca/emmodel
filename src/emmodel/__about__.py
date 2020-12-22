@@ -7,7 +7,7 @@ __title__ = "emmodel"
 __summary__ = "Excess mortality model"
 __uri__ = "https://github.com/ihmeuw-msca/emmodel"
 
-__version__ = "0.0.0"
+__version__ = "0.0.1"
 
 __author__ = "IHME Math Sciences"
 __email__ = "ihme.math.sciences@gmail.com"
