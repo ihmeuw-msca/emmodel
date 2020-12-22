@@ -194,7 +194,7 @@ if __name__ == "__main__":
 
     cascade_specs = {
         "prior_masks": {},
-        "level_masks": [100.0, 0.01]
+        "level_masks": [100.0, 1e-2]
     }
     model_type = "Poisson"
     use_death_rate_covid = True
