@@ -150,20 +150,30 @@ def flatten_dict(d: Dict, parent_key='', sep='_'):
 
 
 def fit_age_mp_location(location: str, dmanager: DataManager) -> Dict[str, pd.DataFrame]:
-    age_all = "0 to 125"
-    age_groups = dmanager.meta[location]["age_groups"]
-    df_all = dmanager.read_data_location(location, group_specs={"age_name": [age_all], "sex": ["all"]})
-    # compute the covid deaths rate
-    df_all["death_rate_covid"] = df_all["deaths_covid"]/df_all["population"]
-    death_rate_covid = df_all[["time", "death_rate_covid"]].copy()
-    data_0 = {age_all: dmanager.truncate_time_location(location, df_all, time_end_id=0)}
-    data_1 = {age_all: dmanager.truncate_time_location(location, df_all, time_end_id=1)}
-    for age_group in age_groups:
-        df = dmanager.read_data_location(location, group_specs={"age_name": [age_group], "sex": ["all"]})
+    df_all_age_all_sex = dmanager.read_data_location(location,
+                                                     group_specs={"age_name": ["0 to 125"],
+                                                                  "sex": ["all"]})
+    df_all_age_all_sex["death_rate_covid"] = df_all_age_all_sex["deaths_covid"]/df_all_age_all_sex["population"]
+    death_rate_covid = df_all_age_all_sex[["time", "death_rate_covid"]].copy()
+    
+    data_0 = {"0 to 125, all": dmanager.truncate_time_location(location, df_all_age_all_sex, time_end_id=0)}
+    data_1 = {"0 to 125, all": dmanager.truncate_time_location(location, df_all_age_all_sex, time_end_id=1)}
+    for sex in ["male", "female"]:
+      name = f"0 to 125, {sex}"
+      df = dmanager.read_data_location(location, group_specs={"age_name": ["0 to 125"], "sex": [sex]})
+      df = df.merge(death_rate_covid, on="time")
+      df["deaths_covid"] = df["death_rate_covid"]*df["population"]
+      data_0[name] = dmanager.truncate_time_location(location, df, time_end_id=0)
+      data_1[name] = dmanager.truncate_time_location(location, df, time_end_id=1)
+   
+    for age_group in dmanager.meta[location]["age_groups"]:
+      for sex in ["all", "male", "female"]:
+        name = f"{age_group}, {sex}"
+        df = dmanager.read_data_location(location, group_specs={"age_name": [age_group], "sex": [sex]})
         df = df.merge(death_rate_covid, on="time")
         df["deaths_covid"] = df["death_rate_covid"]*df["population"]
-        data_0[age_group] = dmanager.truncate_time_location(location, df, time_end_id=0)
-        data_1[age_group] = dmanager.truncate_time_location(location, df, time_end_id=1)
+        data_0[name] = dmanager.truncate_time_location(location, df, time_end_id=0)
+        data_1[name] = dmanager.truncate_time_location(location, df, time_end_id=1)
     models = get_model_mp(data_0)
     return run_model_mp(models, data_1)
 
