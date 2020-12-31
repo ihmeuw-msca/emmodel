@@ -71,20 +71,35 @@ def get_model_cc(data: Dict[str, Dict[str, pd.DataFrame]],
     specs = CascadeSpecs(variables, **cascade_specs)
 
     # create level 0 model
-    df_all = pd.concat([data[location]["0 to 125"] for location in dmanager.locations])
+    df_all = pd.concat([data[location]["0 to 125, all"] for location in dmanager.locations])
     cmodel_lvl0 = Cascade(df_all, specs, level_id=0, name="all")
 
     # create level 1 model
     cmodel_lvl1 = {
-        location: Cascade(data[location]["0 to 125"], specs, level_id=1, name=location)
+        location: Cascade(data[location]["0 to 125, all"], specs, level_id=1, name=location)
         for location in data.keys()
     }
 
     # create level 2 model
     cmodel_lvl2 = {
         location: {
-            age_group: Cascade(data[location][age_group], specs, level_id=2, name=age_group)
-            for age_group in dmanager.meta[location]["age_groups"]
+            f"0 to 125, {sex}": Cascade(data[location][f"0 to 125, {sex}"], 
+                specs, level_id=2, name=f"0 to 125, {sex}")
+            for sex in ['male', 'female']
+        }
+        for location in dmanager.locations
+    }
+
+    # create level 3 model
+    cmodel_lvl3 = {
+        location: {
+            f"0 to 125, {sex}":
+            {
+                f"{age_group}, {sex}": Cascade(data[location][f"{age_group}, {sex}"],
+                    specs, level_id=3, name=f"{age_group}, {sex}")
+                for age_group in dmanager.meta[location]["age_groups"]
+            }
+            for sex in ['male', 'female']
         }
         for location in dmanager.locations
     }
@@ -94,7 +109,13 @@ def get_model_cc(data: Dict[str, Dict[str, pd.DataFrame]],
     for location in dmanager.locations:
         cmodel_lvl1[location].add_children(list(cmodel_lvl2[location].values()))
 
-    return cmodel_lvl0, cmodel_lvl1, cmodel_lvl2
+    for location in dmanager.locations:
+        for sex in ['male', 'female']:
+            cmodel_lvl2[location][f"0 to 125, {sex}"].add_children(
+                list(cmodel_lvl3[location][f"0 to 125, {sex}"].values())
+                )
+
+    return cmodel_lvl0, cmodel_lvl1, cmodel_lvl2, cmodel_lvl3
 
 
 def run_model_cc(*cmodels: Tuple[Cascade]) -> Dict[str, pd.DataFrame]:
@@ -123,7 +144,9 @@ def run_model_cc(*cmodels: Tuple[Cascade]) -> Dict[str, pd.DataFrame]:
 def plot_models(cmodels: Dict[str, Cascade], dmanager: DataManager):
     for name, cmodel in cmodels.items():
         df = cmodel.model.df
-        name = name.replace(" ", "_")
+        name = name.replace(", ", "_")
+        name = name.replace("0 to 125_male_", "")
+        name = name.replace("0 to 125_female_", "")
         location = name.split("_")[0]
         ax = plot_data(df,
                        dmanager.meta[location]["time_unit"],
@@ -202,7 +225,7 @@ if __name__ == "__main__":
 
     cascade_specs = {
         "prior_masks": {},
-        "level_masks": [100.0, 1e-2]
+        "level_masks": [100.0, 0.1, 0.1, 0.1]
     }
     model_type = "Poisson"
     use_death_rate_covid = True
@@ -214,4 +237,5 @@ if __name__ == "__main__":
     dmanager.write_data(data_age_cc[1])
     leaf_cmodels = data_age_cc[0][1]
     leaf_cmodels.update(flatten_dict(data_age_cc[0][2]))
+    leaf_cmodels.update(flatten_dict(data_age_cc[0][3]))
     plot_models(leaf_cmodels, dmanager)
