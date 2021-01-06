@@ -114,7 +114,7 @@ def add_time(df: pd.DataFrame,
 
     yeartime = get_yeartime(df, col_year, col_time, time_start.time_unit)
     df["time"] = (yeartime - time_start).astype(int)
-    df = df[df.time >= 1].reset_index(drop=True)
+    df = df[df.time >= 0].reset_index(drop=True)
     df.time = df.time - df.time.min() + 1
     return df.reset_index(drop=True)
 
