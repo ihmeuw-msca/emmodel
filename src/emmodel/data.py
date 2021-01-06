@@ -36,6 +36,12 @@ class DataManager:
         default = meta.pop("default")
         for location in meta:
             meta[location] = {**default, **meta[location]}
+            time_start = meta[location]["time_start"]
+            time_end_0 = meta[location]["time_end_0"]
+            time_end_1 = meta[location]["time_end_1"]
+            meta[location]["time_start"] = (time_start["year"], time_start["detailed"])
+            meta[location]["time_end_0"] = (time_end_0["year"], time_end_0["detailed"])
+            meta[location]["time_end_1"] = (time_end_1["year"], time_end_1["detailed"])
         return meta
 
     def read_data_location(self, location: str, group_specs: Dict) -> pd.DataFrame:

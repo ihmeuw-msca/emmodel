@@ -9,9 +9,15 @@ default:
     - location_id
     - deaths_covid
   time_unit: week
-  time_start: [2010, 1]
-  time_end_0: [2020, 8]
-  time_end_1: [2020, 36]
+  time_start:
+    year: 2010
+    detailed: 1
+  time_end_0: 
+    year: 2020
+    detailed: 8
+  time_end_1:
+    year: 2020
+    detailed: 36
   age_groups:
     - 0 to 5
     - 5 to 10
