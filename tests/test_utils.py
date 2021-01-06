@@ -76,11 +76,11 @@ def test_eq(yt0, yt1, result):
     assert (yt1 == yt0) == result
 
 
-@pytest.mark.parametrize("yt", [YearTime(2010, 0)])
+@pytest.mark.parametrize("yt", [YearTime(2010, 1)])
 @pytest.mark.parametrize(("key", "value"),
                          [(0, 2010),
                           ("year", 2010),
-                          (1, 0),
-                          ("time", 0)])
+                          (1, 1),
+                          ("time", 1)])
 def test_getitem(yt, key, value):
     assert yt[key] == value

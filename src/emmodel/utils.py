@@ -47,8 +47,8 @@ class YearTime:
 
         self.time_unit = time_unit
         self.units_per_year = UNITS_PER_YEAR[self.time_unit]
-        self.year = year + time // self.units_per_year
-        self.time = time % self.units_per_year
+        self.year = year + (time - 1) // self.units_per_year
+        self.time = 1 + (time - 1) % self.units_per_year
 
     def _validate_other(self, other: "YearTime"):
         if not isinstance(other, YearTime):
