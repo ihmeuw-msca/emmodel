@@ -62,11 +62,13 @@ class ExcessMortalityModel:
                 self.results[i]["coefs"], self.data[i]
             )
             if i + 1 == self.num_models:
-                self.df[col_pred] = pred
+                df[col_pred] = pred
+                df['trend_residual'] = np.log(df['deaths']) - df[f"offset_{i}"]
+                df['time_trend'] = np.log(df[col_pred]) - df[f"offset_{i}"]
             elif self.model_variables[i + 1].model_type == "Linear":
-                self.df[f"offset_{i + 1}"] = pred
+                df[f"offset_{i + 1}"] = pred
             else:
-                self.df[f"offset_{i + 1}"] = np.log(pred)
+                df[f"offset_{i + 1}"] = np.log(pred)
             self.data[i].detach_df()
         return df
 
@@ -105,4 +107,21 @@ def plot_model(ax: plt.Axes,
                **options) -> plt.Axes:
     ax.plot(df.time, df[col_pred], label=col_pred, **options)
     ax.legend()
+    return ax
+
+
+def plot_time_trend(ax: plt.Axes, df: pd.DataFrame, 
+        time_unit: str, col_year: str, **options) -> plt.Axes:
+    ax.plot(df.time, df.trend_residual, label='residual', **options)
+    ax.plot(df.time, df.time_trend, label='time trend', **options)
+    ax.legend()
+
+    if time_unit not in ["week", "month"]:
+        raise ValueError("`time_unit` must be either 'week' or 'month'.")
+    units_per_year = 52 if time_unit == "week" else 12
+    years = df[col_year].unique()
+    year_heads = (years - df[col_year].min())*units_per_year + 1
+    ax.set_xticks(year_heads)
+    ax.set_xticklabels(years)
+    ax.set_xlabel("time")
     return ax
