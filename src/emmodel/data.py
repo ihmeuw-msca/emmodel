@@ -123,9 +123,5 @@ def get_yeartime(df: pd.DataFrame,
                  col_year: str,
                  col_time: str,
                  time_unit: str) -> np.ndarray:
-    return np.array([
-        YearTime(df.loc[i, col_year],
-                 df.loc[i, col_time],
-                 time_unit=time_unit)
-        for i in range(df.shape[0])
-    ])
+    return np.array([YearTime(*t, time_unit=time_unit)
+                     for t in zip(df[col_year], df[col_time])])
