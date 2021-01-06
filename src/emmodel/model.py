@@ -124,4 +124,6 @@ def plot_time_trend(ax: plt.Axes, df: pd.DataFrame,
     ax.set_xticks(year_heads)
     ax.set_xticklabels(years)
     ax.set_xlabel("time")
+    for time in year_heads:
+        ax.axvline(time, linestyle="--", color="gray")
     return ax
