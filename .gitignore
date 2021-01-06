@@ -132,8 +132,8 @@ dmypy.json
 .vscode/
 
 # examples
-examples/data/*.csv
-examples/results/
+examples/data*
+examples/results*
 
 # mac-os
 .DS_Store
