@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from emmodel.cascade import Cascade, CascadeSpecs
 from emmodel.data import DataManager
-from emmodel.model import ExcessMortalityModel, plot_data, plot_model
+from emmodel.model import ExcessMortalityModel, plot_data, plot_model, plot_time_trend
 from emmodel.variable import (ModelVariables, SeasonalityModelVariables,
                               TimeModelVariables)
 from regmod.prior import UniformPrior
