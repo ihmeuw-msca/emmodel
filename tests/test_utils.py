@@ -5,13 +5,13 @@ import pytest
 from emmodel.utils import YearTime
 
 
-@pytest.mark.parametrize("year", [1.0, -2010])
+@pytest.mark.parametrize("year", [-2010])
 def test_year_validate(year):
     with pytest.raises(AssertionError):
         YearTime(year, 0)
 
 
-@pytest.mark.parametrize("time", [1.0, -10])
+@pytest.mark.parametrize("time", [-10])
 def test_time_validate(time):
     with pytest.raises(AssertionError):
         YearTime(0, time)
