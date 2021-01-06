@@ -44,8 +44,10 @@ class ExcessMortalityModel:
             pred = self.models[i].parameters[0].get_param(
                 self.results[i]["coefs"], self.data[i]
             )
-            if i + 1 == self.num_models or self.model_variables[i + 1].model_type == "Linear":
+            if i + 1 == self.num_models:
                 self.df["deaths_pred"] = pred
+            elif self.model_variables[i + 1].model_type == "Linear":
+                self.df[f"offset_{i + 1}"] = pred
             else:
                 self.df[f"offset_{i + 1}"] = np.log(pred)
             self.data[i].detach_df()
@@ -59,10 +61,12 @@ class ExcessMortalityModel:
             pred = self.models[i].parameters[0].get_param(
                 self.results[i]["coefs"], self.data[i]
             )
-            if i + 1 == self.num_models or self.model_variables[i + 1].model_type == "Linear":
-                df[col_pred] = pred
+            if i + 1 == self.num_models:
+                self.df[col_pred] = pred
+            elif self.model_variables[i + 1].model_type == "Linear":
+                self.df[f"offset_{i + 1}"] = pred
             else:
-                df[f"offset_{i + 1}"] = np.log(pred)
+                self.df[f"offset_{i + 1}"] = np.log(pred)
             self.data[i].detach_df()
         return df
 
