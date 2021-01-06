@@ -38,10 +38,10 @@ class YearTime:
         time_unit : str, optional
             Time unit, options are "week" and "month", by default "week"
         """
-        assert isinstance(year, int) and year >= 0, \
-            "`year` has to be a non-negative integer."
-        assert isinstance(time, int) and time >= 0, \
-            "`time` has to be a non-negative integer."
+        year = int(year)
+        time = int(time)
+        assert year >= 0, "`year` has to be a non-negative integer."
+        assert time >= 0, "`time` has to be a non-negative integer."
         assert time_unit in ["week", "month"], \
             "`time_unit` has to be selected from 'week' or 'month'."
 

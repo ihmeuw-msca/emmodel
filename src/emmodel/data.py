@@ -3,11 +3,13 @@ Data module
 """
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import yaml
 import numpy as np
 import pandas as pd
+
+from emmodel.utils import YearTime
 
 
 @dataclass
@@ -36,12 +38,11 @@ class DataManager:
         default = meta.pop("default")
         for location in meta:
             meta[location] = {**default, **meta[location]}
-            time_start = meta[location]["time_start"]
-            time_end_0 = meta[location]["time_end_0"]
-            time_end_1 = meta[location]["time_end_1"]
-            meta[location]["time_start"] = (time_start["year"], time_start["detailed"])
-            meta[location]["time_end_0"] = (time_end_0["year"], time_end_0["detailed"])
-            meta[location]["time_end_1"] = (time_end_1["year"], time_end_1["detailed"])
+            for time_key in ["time_start", "time_end_0", "time_end_1"]:
+                time_value = meta[location][time_key]
+                meta[location][time_key] = YearTime(time_value["year"],
+                                                    time_value["detailed"],
+                                                    time_unit=meta[location]["time_unit"])
         return meta
 
     def read_data_location(self, location: str, group_specs: Dict) -> pd.DataFrame:
@@ -54,8 +55,7 @@ class DataManager:
         df = add_time(df,
                       col_year,
                       col_time,
-                      self.meta[location]["time_start"],
-                      self.meta[location]["time_unit"])
+                      self.meta[location]["time_start"])
         if df.empty:
             raise ValueError(f"Location {location} has no matching data for {group_specs}.")
         return df.fillna(0.0)
@@ -73,12 +73,9 @@ class DataManager:
         col_year = self.meta[location]["col_year"]
         col_time = self.meta[location]["col_time"]
         time_end = self.meta[location][f"time_end_{time_end_id}"]
-        time_ub = get_time_from_yeartime(
-            time_end[0],
-            time_end[1],
-            get_time_min(df, col_year, col_time),
-            self.meta[location]["time_unit"]
-        )
+        time_unit = self.meta[location]["time_unit"]
+        year_time = get_yeartime(df, col_year, col_time, time_unit)
+        time_ub = time_end - year_time.min()
         return df[df["time"] <= time_ub].reset_index(drop=True)
 
     def truncate_time(self,
@@ -113,31 +110,22 @@ def select_groups(df: pd.DataFrame,
 def add_time(df: pd.DataFrame,
              col_year: str,
              col_time: str,
-             time_start: Tuple[int, int] = (0, 0),
-             time_unit: str = "week") -> pd.DataFrame:
+             time_start: YearTime) -> pd.DataFrame:
 
-    df["time"] = get_time_from_yeartime(df[col_year],
-                                        df[col_time],
-                                        time_start=time_start,
-                                        time_unit=time_unit)
+    yeartime = get_yeartime(df, col_year, col_time, time_start.time_unit)
+    df["time"] = (yeartime - time_start).astype(int)
     df = df[df.time >= 1].reset_index(drop=True)
     df.time = df.time - df.time.min() + 1
     return df.reset_index(drop=True)
 
 
-def get_time_min(df: pd.DataFrame,
+def get_yeartime(df: pd.DataFrame,
                  col_year: str,
-                 col_time: str) -> Tuple[int, int]:
-    year_min = df[col_year].min()
-    time_min = df.loc[df[col_year] == year_min, col_time].min()
-    return (year_min, time_min)
-
-
-def get_time_from_yeartime(year: np.ndarray,
-                           time: np.ndarray,
-                           time_start: Tuple[int, int],
-                           time_unit: str) -> np.ndarray:
-    if time_unit not in ["week", "month"]:
-        raise ValueError("`time_unit` must be either 'week' or 'month'.")
-    units_per_year = 52 if time_unit == "week" else 12
-    return (year - time_start[0])*units_per_year + time - time_start[1] + 1
+                 col_time: str,
+                 time_unit: str) -> np.ndarray:
+    return np.array([
+        YearTime(df.loc[i, col_year],
+                 df.loc[i, col_time],
+                 time_unit=time_unit)
+        for i in range(df.shape[0])
+    ])
