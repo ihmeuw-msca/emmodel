@@ -78,7 +78,8 @@ def plot_data(df: pd.DataFrame,
     years = df[col_year].unique()
     year_heads = (years - df[col_year].min())*units_per_year + 1
 
-    ax = plt.subplots(1, figsize=(2.5*len(years), 5))[1]
+    axs = plt.subplots(2, figsize=(2.5*len(years), 10))[1]
+    ax = axs[0]
     ax.scatter(df.time, df[col_deaths], color="gray")
     ax.set_xticks(year_heads)
     ax.set_xticklabels(years)
@@ -91,7 +92,7 @@ def plot_data(df: pd.DataFrame,
     ax.set_ylabel("deaths")
     ax.set_xlabel("time")
 
-    return ax
+    return ax, axs
 
 
 def plot_model(ax: plt.Axes,
