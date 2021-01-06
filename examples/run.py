@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from emmodel.cascade import Cascade, CascadeSpecs
 from emmodel.data import DataManager
-from emmodel.model import ExcessMortalityModel, plot_data, plot_model
+from emmodel.model import ExcessMortalityModel, plot_data, plot_model, plot_time_trend
 from emmodel.variable import (ModelVariables, SeasonalityModelVariables,
                               TimeModelVariables)
 from regmod.prior import UniformPrior
@@ -148,14 +148,18 @@ def plot_models(cmodels: Dict[str, Cascade], dmanager: DataManager):
         name = name.replace("0 to 125_male_", "")
         name = name.replace("0 to 125_female_", "")
         location = name.split("_")[0]
-        ax = plot_data(df,
-                       dmanager.meta[location]["time_unit"],
-                       dmanager.meta[location]["col_year"])
+        ax, axs = plot_data(df,
+                            dmanager.meta[location]["time_unit"],
+                            dmanager.meta[location]["col_year"])
         ax = plot_model(ax, df, "deaths_pred", color="#008080")
         ax = plot_model(ax, df, "mortality_pattern", color="#E7A94D",
                         linestyle="--")
         ax.set_title(name, loc="left")
         ax.legend()
+        ax = plot_time_trend(axs[1], 
+                             df, 
+                             dmanager.meta[location]["time_unit"],
+                             dmanager.meta[location]["col_year"])
         plt.savefig(dmanager.o_folder / f"{name}.pdf",
                     bbox_inches="tight")
         plt.close("all")
