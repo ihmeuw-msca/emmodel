@@ -23,7 +23,6 @@ def get_model_mp(data: Dict[str, pd.DataFrame],
     models = {}
     for name, df in data.items():
         num_knots = max(2, int(knots_per_year*df.time.max()/units_per_year))
-        print(name, num_knots)
         seas_spline_specs = SplineSpecs(knots=np.linspace(0.0, 1.0, 5),
                                         degree=3,
                                         knots_type="rel_domain")
