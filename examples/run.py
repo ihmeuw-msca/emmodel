@@ -17,16 +17,18 @@ from regmod.variable import SplineVariable, Variable
 
 
 def get_model_mp(data: Dict[str, pd.DataFrame],
-                 col_time: str = "time_start") -> Dict[str, ExcessMortalityModel]:
-    seas_spline_specs = SplineSpecs(knots=np.linspace(0.0, 1.0, 5),
-                                    degree=3,
-                                    r_linear=True,
-                                    knots_type="rel_domain")
-    time_spline_specs = SplineSpecs(knots=np.linspace(0.0, 1.0, 5),
-                                    degree=3,
-                                    knots_type="rel_domain")
+                 col_time: str = "time_start",
+                 units_per_year: int = 52,
+                 knots_per_year: float = 0.5) -> Dict[str, ExcessMortalityModel]:
     models = {}
     for name, df in data.items():
+        num_knots = max(2, int(knots_per_year*df.time.max()/units_per_year))
+        seas_spline_specs = SplineSpecs(knots=np.linspace(0.0, 1.0, 5),
+                                        degree=3,
+                                        knots_type="rel_domain")
+        time_spline_specs = SplineSpecs(knots=np.linspace(0.0, 1.0, num_knots),
+                                        degree=1,
+                                        knots_type="rel_domain")
         df["offset_0"] = np.log(df.population)
         seas_var = SplineVariable(col_time, spline_specs=seas_spline_specs)
         time_var = SplineVariable("time", spline_specs=time_spline_specs)
@@ -83,8 +85,8 @@ def get_model_cc(data: Dict[str, Dict[str, pd.DataFrame]],
     # create level 2 model
     cmodel_lvl2 = {
         location: {
-            f"0 to 125, {sex}": Cascade(data[location][f"0 to 125, {sex}"], 
-                specs, level_id=2, name=f"0 to 125, {sex}")
+            f"0 to 125, {sex}": Cascade(data[location][f"0 to 125, {sex}"],
+                                        specs, level_id=2, name=f"0 to 125, {sex}")
             for sex in ['male', 'female']
         }
         for location in dmanager.locations
@@ -96,7 +98,7 @@ def get_model_cc(data: Dict[str, Dict[str, pd.DataFrame]],
             f"0 to 125, {sex}":
             {
                 f"{age_group}, {sex}": Cascade(data[location][f"{age_group}, {sex}"],
-                    specs, level_id=3, name=f"{age_group}, {sex}")
+                                               specs, level_id=3, name=f"{age_group}, {sex}")
                 for age_group in dmanager.meta[location]["age_groups"]
             }
             for sex in ['male', 'female']
@@ -113,7 +115,7 @@ def get_model_cc(data: Dict[str, Dict[str, pd.DataFrame]],
         for sex in ['male', 'female']:
             cmodel_lvl2[location][f"0 to 125, {sex}"].add_children(
                 list(cmodel_lvl3[location][f"0 to 125, {sex}"].values())
-                )
+            )
 
     return cmodel_lvl0, cmodel_lvl1, cmodel_lvl2, cmodel_lvl3
 
@@ -156,8 +158,8 @@ def plot_models(cmodels: Dict[str, Cascade], dmanager: DataManager):
                         linestyle="--")
         ax.set_title(name, loc="left")
         ax.legend()
-        ax = plot_time_trend(axs[1], 
-                             df, 
+        ax = plot_time_trend(axs[1],
+                             df,
                              dmanager.meta[location]["time_unit"],
                              dmanager.meta[location]["col_year"])
         plt.savefig(dmanager.o_folder / f"{name}.pdf",
@@ -182,26 +184,28 @@ def fit_age_mp_location(location: str, dmanager: DataManager) -> Dict[str, pd.Da
                                                                   "sex": ["all"]})
     df_all_age_all_sex["death_rate_covid"] = df_all_age_all_sex["deaths_covid"]/df_all_age_all_sex["population"]
     death_rate_covid = df_all_age_all_sex[["time", "death_rate_covid"]].copy()
-    
+
     data_0 = {"0 to 125, all": dmanager.truncate_time_location(location, df_all_age_all_sex, time_end_id=0)}
     data_1 = {"0 to 125, all": dmanager.truncate_time_location(location, df_all_age_all_sex, time_end_id=1)}
     for sex in ["male", "female"]:
-      name = f"0 to 125, {sex}"
-      df = dmanager.read_data_location(location, group_specs={"age_name": ["0 to 125"], "sex": [sex]})
-      df = df.merge(death_rate_covid, on="time")
-      df["deaths_covid"] = df["death_rate_covid"]*df["population"]
-      data_0[name] = dmanager.truncate_time_location(location, df, time_end_id=0)
-      data_1[name] = dmanager.truncate_time_location(location, df, time_end_id=1)
-   
-    for age_group in dmanager.meta[location]["age_groups"]:
-      for sex in ["all", "male", "female"]:
-        name = f"{age_group}, {sex}"
-        df = dmanager.read_data_location(location, group_specs={"age_name": [age_group], "sex": [sex]})
+        name = f"0 to 125, {sex}"
+        df = dmanager.read_data_location(location, group_specs={"age_name": ["0 to 125"], "sex": [sex]})
         df = df.merge(death_rate_covid, on="time")
         df["deaths_covid"] = df["death_rate_covid"]*df["population"]
         data_0[name] = dmanager.truncate_time_location(location, df, time_end_id=0)
         data_1[name] = dmanager.truncate_time_location(location, df, time_end_id=1)
-    models = get_model_mp(data_0)
+
+    for age_group in dmanager.meta[location]["age_groups"]:
+        for sex in ["all", "male", "female"]:
+            name = f"{age_group}, {sex}"
+            df = dmanager.read_data_location(location, group_specs={"age_name": [age_group], "sex": [sex]})
+            df = df.merge(death_rate_covid, on="time")
+            df["deaths_covid"] = df["death_rate_covid"]*df["population"]
+            data_0[name] = dmanager.truncate_time_location(location, df, time_end_id=0)
+            data_1[name] = dmanager.truncate_time_location(location, df, time_end_id=1)
+    models = get_model_mp(data_0,
+                          units_per_year=dmanager.meta[location]["time_start"].units_per_year,
+                          knots_per_year=0.5)
     return run_model_mp(models, data_1)
 
 
