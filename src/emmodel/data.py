@@ -38,6 +38,9 @@ class DataManager:
         default = meta.pop("default")
         for location in meta:
             meta[location] = {**default, **meta[location]}
+            for group_key in ["age_groups", "sex_groups"]:
+                group_info = meta[location][group_key]
+                meta[location][group_key] = group_info if isinstance(group_info, list) else [group_info]
             for time_key in ["time_start", "time_end_0", "time_end_1"]:
                 time_value = meta[location][time_key]
                 meta[location][time_key] = YearTime(time_value["year"],
