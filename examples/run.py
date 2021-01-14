@@ -118,9 +118,6 @@ def plot_models(dm: DataManager,
 
 
 def main(dm: DataManager):
-    # construct data manager
-    dm = DataManager(i_folder, o_folder)
-
     # get dataframes for each location, age_group and sex_group combination
     data = get_data(dm)
 
