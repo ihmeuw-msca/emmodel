@@ -1,7 +1,7 @@
 """
 Model module
 """
-from typing import List
+from typing import List, Dict
 
 import numpy as np
 import matplotlib.ticker as tkr
@@ -127,3 +127,68 @@ def plot_time_trend(ax: plt.Axes, df: pd.DataFrame,
     for time in year_heads:
         ax.axvline(time, linestyle="--", color="gray")
     return ax
+
+
+class LinearExcessMortalityModel:
+    """LinearExcessMortalityModel"""
+    def __init__(self, df: pd.DataFrame, col_obs: str, 
+                 stage1_col_covs: List[str], stage2_col_covs: List[str],
+                 col_covs_priors: List[str]):
+        self.df = df
+        self.col_obs = col_obs
+        self.stage1_col_covs = stage1_col_covs
+        self.stage2_col_covs = stage2_col_covs
+        self.col_covs_priors = col_covs_priors
+        self.data_stage1 = regmod.data.Data(col_obs=self.col_obs, col_covs=self.stage1_col_covs)
+        self.data_stage2 = regmod.data.Data(col_obs=self.col_obs, col_covs=self.stage2_col_covs)
+
+    def run(self, prior_min_var: float = 0.1):
+        self.run_stage_1()
+        self.priors = self.result_to_priors(min_var=prior_min_var)
+        self.run_stage_2()
+
+    def run_stage_1(self):
+        dropna_col_covs = list(set(self.stage1_col_covs) & set(self.df.columns))
+        self.data_stage1.attach_df(self.df.dropna(subset=dropna_col_covs))
+        self.variables_stage1 = [
+            regmod.variable.Variable(self.stage1_col_covs[ix]) 
+                for ix in range(len(self.stage1_col_covs))
+            ]
+        self.model_stage1 = regmod.model.LinearModel(self.data_stage1, self.variables_stage1)
+        self.result_stage1 = regmod.optimizer.scipy_optimize(self.model_stage1)
+        self.data_stage1.detach_df()
+
+    def run_stage_2(self):
+        dropna_col_covs = list(set(self.stage2_col_covs) & set(self.df.columns))
+        self.data_stage2.attach_df(self.df.dropna(subset=dropna_col_covs))
+        self.variables_stage2 = []
+        # Add priors for specified covariates
+        for cov in self.col_covs_priors:
+            self.variables_stage2.append(regmod.variable.Variable(cov, priors=[self.priors[cov]]))
+        # Include other covariates
+        for cov in self.stage2_col_covs:
+            if cov not in self.col_covs_priors:
+                self.variables_stage2.append(regmod.variable.Variable(cov))
+        self.model_stage2 = regmod.model.LinearModel(self.data_stage2, self.variables_stage2)
+        self.result_stage2 = regmod.optimizer.scipy_optimize(self.model_stage2)
+        self.data_stage2.detach_df()
+
+    def result_to_priors(self, min_var: float = 0.1) -> Dict:
+        mean = self.result_stage1["coefs"]
+        var_names = [variable.name for variable in self.variables_stage1]
+        sd = np.sqrt(np.maximum(min_var, np.diag(self.result_stage1["vcov"])))
+        slices = regmod.utils.sizes_to_sclices([var.size for var in self.variables_stage1])
+        priors = {
+            var_name: regmod.prior.GaussianPrior(mean=mean[slices[i]], sd=sd[slices[i]]) 
+            for i, var_name in enumerate(var_names) if var_name != 'intercept'
+        }
+        return priors
+
+    def predict(self, df: pd.DataFrame) -> pd.DataFrame:
+        dropna_col_covs = list(set(self.stage2_col_covs) & set(df.columns)) 
+        df = df.dropna(subset=dropna_col_covs)
+        data = regmod.data.Data(col_obs=self.col_obs, col_covs=self.stage2_col_covs)
+        data.attach_df(df)
+        df['pred'] = self.model_stage2.parameters[0].get_param(self.result_stage2['coefs'], data)
+        data.detach_df()
+        return df
