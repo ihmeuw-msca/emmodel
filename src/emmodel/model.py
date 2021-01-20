@@ -52,23 +52,46 @@ class ExcessMortalityModel:
                 self.df[f"offset_{i + 1}"] = np.log(pred)
             self.data[i].detach_df()
 
-    def predict(self, df: pd.DataFrame, col_pred: str = "deaths_pred") -> pd.DataFrame:
+    def predict(self, df: pd.DataFrame, col_pred: str = "deaths_pred", 
+                prediction_interval: bool = False, num_draws: int = 1000) -> pd.DataFrame:
         """
         Predict expected deaths ('deaths_pred') from data and model fit
         """
         for i in range(self.num_models):
             self.data[i].attach_df(df)
-            pred = self.models[i].parameters[0].get_param(
-                self.results[i]["coefs"], self.data[i]
-            )
-            if i + 1 == self.num_models:
-                df[col_pred] = pred
-                df['trend_residual'] = np.log(df['deaths']) - df[f"offset_{i}"]
-                df['time_trend'] = np.log(df[col_pred]) - df[f"offset_{i}"]
-            elif self.model_variables[i + 1].model_type == "Linear":
-                df[f"offset_{i + 1}"] = pred
+            if not prediction_interval:
+                pred = self.models[i].parameters[0].get_param(
+                    self.results[i]["coefs"], self.data[i]
+                )
+                if i + 1 == self.num_models:
+                    df[col_pred] = pred
+                    df['trend_residual'] = np.log(df['deaths']) - df[f"offset_{i}"]
+                    df['time_trend'] = np.log(df[col_pred]) - df[f"offset_{i}"]
+                elif self.model_variables[i + 1].model_type == "Linear":
+                    df[f"offset_{i + 1}"] = pred
+                else:
+                    df[f"offset_{i + 1}"] = np.log(pred)
             else:
-                df[f"offset_{i + 1}"] = np.log(pred)
+                coef, vcov = self.results[i]['coefs'], self.results[i]['vcov']
+                parameters, data = self.models[i].parameters[0], self.data[i]
+                pred_mean, pred_lower, pred_upper = \
+                    simulate_uncertainty(coef, vcov, parameters, data, num_draws)
+                if i + 1 == self.num_models:
+                    df[f"{col_pred}_mean"] = pred_mean
+                    df[f"{col_pred}_lower"] = pred_lower
+                    df[f"{col_pred}_upper"] = pred_upper
+                    df['trend_residual'] = np.log(df['deaths']) - df[f"offset_{i}"]
+                    df['time_trend_mean'] = np.log(df[f"{col_pred}_mean"]) - df[f"offset_{i}"]
+                    df['time_trend_lower'] = np.log(df[f"{col_pred}_lower"]) - df[f"offset_{i}"]
+                    df['time_trend_upper'] = np.log(df[f"{col_pred}_upper"]) - df[f"offset_{i}"]
+                elif self.model_variables[i + 1].model_type == "Linear":
+                    df[f"offset_{i + 1}_mean"] = pred_mean
+                    df[f"offset_{i + 1}_lower"] = pred_lower
+                    df[f"offset_{i + 1}_upper"] = pred_upper
+                else:
+                    df[f"offset_{i + 1}_mean"] = np.log(pred_mean)
+                    df[f"offset_{i + 1}_lower"] = np.log(pred_lower)
+                    df[f"offset_{i + 1}_upper"] = np.log(pred_upper)
             self.data[i].detach_df()
         return df
 
@@ -129,6 +152,18 @@ def plot_time_trend(ax: plt.Axes, df: pd.DataFrame,
     return ax
 
 
+def simulate_uncertainty(coef, vcov, parameters, data, num_draws):
+    lst_pred = []
+    for _ in range(num_draws):
+        coef_sim = np.random.multivariate_normal(coef, vcov)
+        pred = parameters.get_param(coef_sim, data)
+        lst_pred.append(pred)
+    pred_mean = np.mean(lst_pred, axis=0)
+    pred_lower = np.percentile(lst_pred, 2.5, axis=0)
+    pred_upper = np.percentile(lst_pred, 97.5, axis=0)
+    return pred_mean, pred_lower, pred_upper
+
+
 class LinearExcessMortalityModel:
     """LinearExcessMortalityModel"""
     def __init__(self, df: pd.DataFrame, col_obs: str, 
@@ -184,11 +219,21 @@ class LinearExcessMortalityModel:
         }
         return priors
 
-    def predict(self, df: pd.DataFrame) -> pd.DataFrame:
+    def predict(self, df: pd.DataFrame, prediction_interval: bool = False, 
+                num_draws: int = 1000) -> pd.DataFrame:
         dropna_col_covs = list(set(self.stage2_col_covs) & set(df.columns)) 
         df = df.dropna(subset=dropna_col_covs)
         data = regmod.data.Data(col_obs=self.col_obs, col_covs=self.stage2_col_covs)
         data.attach_df(df)
-        df['pred'] = self.model_stage2.parameters[0].get_param(self.result_stage2['coefs'], data)
+        if not prediction_interval:
+            df['pred'] = self.model_stage2.parameters[0].get_param(self.result_stage2['coefs'], data)
+        else:
+            coef, vcov = self.result_stage2['coefs'], self.result_stage2['vcov']
+            parameters = self.model_stage2.parameters[0]
+            pred_mean, pred_lower, pred_upper = \
+                simulate_uncertainty(coef, vcov, parameters, data, num_draws)
+            df['pred_mean'] = pred_mean
+            df['pred_lower'] = pred_lower
+            df['pred_upper'] = pred_upper
         data.detach_df()
         return df
