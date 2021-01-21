@@ -53,16 +53,23 @@ class ExcessMortalityModel:
             self.data[i].detach_df()
 
     def predict(self, df: pd.DataFrame, col_pred: str = "deaths_pred", 
-                prediction_interval: bool = False, num_draws: int = 1000) -> pd.DataFrame:
+                sim_coef: bool = False, prediction_interval: bool = False) -> pd.DataFrame:
         """
         Predict expected deaths ('deaths_pred') from data and model fit
         """
-        for i in range(self.num_models):
-            self.data[i].attach_df(df)
-            if not prediction_interval:
-                pred = self.models[i].parameters[0].get_param(
-                    self.results[i]["coefs"], self.data[i]
-                )
+        if prediction_interval:
+            df = self.predict_with_interval(df, col_pred)
+        else:
+            for i in range(self.num_models):
+                self.data[i].attach_df(df)
+                if sim_coef:
+                    coef = np.random.multivariate_normal(
+                        self.results[i]['coefs'], self.results[i]['vcov']
+                        )
+                else:
+                    coef = self.results[i]["coefs"]
+                pred = self.models[i].parameters[0].get_param(coef, self.data[i])
+
                 if i + 1 == self.num_models:
                     df[col_pred] = pred
                     df['trend_residual'] = np.log(df['deaths']) - df[f"offset_{i}"]
@@ -71,28 +78,33 @@ class ExcessMortalityModel:
                     df[f"offset_{i + 1}"] = pred
                 else:
                     df[f"offset_{i + 1}"] = np.log(pred)
-            else:
-                coef, vcov = self.results[i]['coefs'], self.results[i]['vcov']
-                parameters, data = self.models[i].parameters[0], self.data[i]
-                pred_mean, pred_lower, pred_upper = \
-                    simulate_uncertainty(coef, vcov, parameters, data, num_draws)
-                if i + 1 == self.num_models:
-                    df[f"{col_pred}_mean"] = pred_mean
-                    df[f"{col_pred}_lower"] = pred_lower
-                    df[f"{col_pred}_upper"] = pred_upper
-                    df['trend_residual'] = np.log(df['deaths']) - df[f"offset_{i}"]
-                    df['time_trend_mean'] = np.log(df[f"{col_pred}_mean"]) - df[f"offset_{i}"]
-                    df['time_trend_lower'] = np.log(df[f"{col_pred}_lower"]) - df[f"offset_{i}"]
-                    df['time_trend_upper'] = np.log(df[f"{col_pred}_upper"]) - df[f"offset_{i}"]
-                elif self.model_variables[i + 1].model_type == "Linear":
-                    df[f"offset_{i + 1}_mean"] = pred_mean
-                    df[f"offset_{i + 1}_lower"] = pred_lower
-                    df[f"offset_{i + 1}_upper"] = pred_upper
-                else:
-                    df[f"offset_{i + 1}_mean"] = np.log(pred_mean)
-                    df[f"offset_{i + 1}_lower"] = np.log(pred_lower)
-                    df[f"offset_{i + 1}_upper"] = np.log(pred_upper)
-            self.data[i].detach_df()
+                self.data[i].detach_df()
+        return df
+
+    def predict_with_interval(self, df: pd.DataFrame, col_pred: str = "deaths_pred", 
+                              num_draws: int = 500) -> pd.DataFrame:
+        """
+        Predict expected deaths ('deaths_pred') from data and model fit with intervals
+        """
+        lst_pred = []
+        lst_time_trend = []
+        lst_trend_residual = []
+        for _ in range(num_draws):
+            df_sim = self.predict(df, col_pred, sim_coef=True)
+            pred = df_sim.loc[:, col_pred].values
+            time_trend = df_sim.loc[:, 'time_trend'].values
+            trend_residual = df_sim.loc[:, 'trend_residual'].values
+            lst_pred.append(pred.tolist())
+            lst_time_trend.append(time_trend.tolist())
+            lst_trend_residual.append(trend_residual.tolist())
+
+        df[f"{col_pred}_mean"], df[f"{col_pred}_lower"], df[f"{col_pred}_upper"] = \
+            summarize_uncertainty(lst_pred)
+        df['trend_residual_mean'], df['trend_residual_lower'], df['trend_residual_upper'] = \
+            summarize_uncertainty(lst_trend_residual)
+        df['time_trend_mean'], df['time_trend_lower'], df['time_trend_upper'] = \
+            summarize_uncertainty(lst_time_trend)
+        df = df.drop(columns=[col_pred, 'trend_residual', 'time_trend'])
         return df
 
 
@@ -152,15 +164,17 @@ def plot_time_trend(ax: plt.Axes, df: pd.DataFrame,
     return ax
 
 
+def summarize_uncertainty(lst):
+    pred_mean = np.mean(lst, axis=0)
+    pred_lower = np.percentile(lst, 2.5, axis=0)
+    pred_upper = np.percentile(lst, 97.5, axis=0)
+    return pred_mean, pred_lower, pred_upper
+
+
 def simulate_uncertainty(coef, vcov, parameters, data, num_draws):
-    lst_pred = []
-    for _ in range(num_draws):
-        coef_sim = np.random.multivariate_normal(coef, vcov)
-        pred = parameters.get_param(coef_sim, data)
-        lst_pred.append(pred)
-    pred_mean = np.mean(lst_pred, axis=0)
-    pred_lower = np.percentile(lst_pred, 2.5, axis=0)
-    pred_upper = np.percentile(lst_pred, 97.5, axis=0)
+    coef_sims = np.random.multivariate_normal(coef, vcov, num_draws)
+    lst_pred = [parameters.get_param(coef_sim, data) for coef_sim in coef_sims]
+    pred_mean, pred_lower, pred_upper = summarize_uncertainty(lst_pred)
     return pred_mean, pred_lower, pred_upper
 
 
@@ -230,10 +244,7 @@ class LinearExcessMortalityModel:
         else:
             coef, vcov = self.result_stage2['coefs'], self.result_stage2['vcov']
             parameters = self.model_stage2.parameters[0]
-            pred_mean, pred_lower, pred_upper = \
+            df['pred_mean'], df['pred_lower'], df['pred_upper'] = \
                 simulate_uncertainty(coef, vcov, parameters, data, num_draws)
-            df['pred_mean'] = pred_mean
-            df['pred_lower'] = pred_lower
-            df['pred_upper'] = pred_upper
         data.detach_df()
         return df
