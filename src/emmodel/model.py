@@ -1,7 +1,7 @@
 """
 Model module
 """
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
 import numpy as np
 import matplotlib.ticker as tkr
@@ -52,59 +52,128 @@ class ExcessMortalityModel:
                 self.df[f"offset_{i + 1}"] = np.log(pred)
             self.data[i].detach_df()
 
-    def predict(self, df: pd.DataFrame, col_pred: str = "deaths_pred", 
-                sim_coef: bool = False, prediction_interval: bool = False) -> pd.DataFrame:
+    def get_results_samples(self, num_samples: int = 1000) -> List[List[Dict]]:
         """
-        Predict expected deaths ('deaths_pred') from data and model fit
-        """
-        if prediction_interval:
-            df = self.predict_with_interval(df, col_pred)
-        else:
-            for i in range(self.num_models):
-                self.data[i].attach_df(df)
-                if sim_coef:
-                    coef = np.random.multivariate_normal(
-                        self.results[i]['coefs'], self.results[i]['vcov']
-                        )
-                else:
-                    coef = self.results[i]["coefs"]
-                pred = self.models[i].parameters[0].get_param(coef, self.data[i])
+        Get the samples of results.
 
-                if i + 1 == self.num_models:
-                    df[col_pred] = pred
-                    df['trend_residual'] = np.log(df['deaths']) - df[f"offset_{i}"]
-                    df['time_trend'] = np.log(df[col_pred]) - df[f"offset_{i}"]
-                elif self.model_variables[i + 1].model_type == "Linear":
-                    df[f"offset_{i + 1}"] = pred
-                else:
-                    df[f"offset_{i + 1}"] = np.log(pred)
-                self.data[i].detach_df()
+        Parameters
+        ----------
+        num_samples : int, optional
+            Number of samples, by default 1000
+
+        Returns
+        -------
+        List[List[Dict]]
+            List of samples of results, results will be in the form of list of
+            dictionary.
+        """
+        coefs_samples = [
+            np.random.multivariate_normal(
+                self.results[i]["coefs"],
+                self.results[i]["vcov"],
+                size=num_samples
+            )
+            for i in range(self.num_models)
+        ]
+        results_samples = np.array([
+            [{"coefs": coefs_samples[i][j]} for j in range(num_samples)]
+            for i in range(self.num_models)
+        ])
+        return results_samples.T
+
+    def _predict(self,
+                 df: pd.DataFrame,
+                 col_pred: str = "deaths_pred",
+                 results: List[Dict] = None) -> pd.DataFrame:
+        """
+        Inner predict function.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Dataframe that contains information of the model data.
+        col_pred : str, optional
+            Name of the final prediction column, by default "deaths_pred"
+        results : List[Dict], optional
+            Provided results, by default None. If None, use the instance
+            results.
+
+        Returns
+        -------
+        pd.DataFrame
+            Predicted Dataframe.
+        """
+        results = self.results if results is None else results
+        for i in range(self.num_models):
+            self.data[i].attach_df(df)
+            pred = self.models[i].parameters[0].get_param(
+                self.results[i]["coefs"], self.data[i]
+            )
+            if i + 1 == self.num_models:
+                df[col_pred] = pred
+                df['trend_residual'] = np.log(df['deaths']) - df[f"offset_{i}"]
+                df['time_trend'] = np.log(df[col_pred]) - df[f"offset_{i}"]
+            elif self.model_variables[i + 1].model_type == "Linear":
+                df[f"offset_{i + 1}"] = pred
+            else:
+                df[f"offset_{i + 1}"] = np.log(pred)
+            self.data[i].detach_df()
         return df
 
-    def predict_with_interval(self, df: pd.DataFrame, col_pred: str = "deaths_pred", 
-                              num_draws: int = 500) -> pd.DataFrame:
+    def get_draws(self,
+                  df: pd.DataFrame,
+                  col_pred: str = "deaths_pred",
+                  num_samples: int = 1000,
+                  results_samples: List[List[Dict]] = None) -> Dict[str, np.ndarray]:
         """
-        Predict expected deaths ('deaths_pred') from data and model fit with intervals
-        """
-        lst_pred = []
-        lst_time_trend = []
-        lst_trend_residual = []
-        for _ in range(num_draws):
-            df_sim = self.predict(df, col_pred, sim_coef=True)
-            pred = df_sim.loc[:, col_pred].values
-            time_trend = df_sim.loc[:, 'time_trend'].values
-            trend_residual = df_sim.loc[:, 'trend_residual'].values
-            lst_pred.append(pred.tolist())
-            lst_time_trend.append(time_trend.tolist())
-            lst_trend_residual.append(trend_residual.tolist())
+        Get draws of the prediction.
 
-        df[f"{col_pred}_mean"], df[f"{col_pred}_lower"], df[f"{col_pred}_upper"] = \
-            summarize_uncertainty(lst_pred)
-        df['trend_residual_mean'], df['trend_residual_lower'], df['trend_residual_upper'] = \
-            summarize_uncertainty(lst_trend_residual)
-        df['time_trend_mean'], df['time_trend_lower'], df['time_trend_upper'] = \
-            summarize_uncertainty(lst_time_trend)
-        df = df.drop(columns=[col_pred, 'trend_residual', 'time_trend'])
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Dataframe that contains information of the model data.
+        col_pred : str, optional
+            Name of the final prediction column, by default "deaths_pred"
+        num_samples : int, optional 
+            Number of samples, by default 1000. Only use when results_samples
+            is None.
+        results_samples : List[List[Dict]], optional
+            Samples of results, by default None. If None will automatically
+            sample results.
+
+        Returns
+        -------
+        Dict[str, np.ndarray]
+            Draws of time_trend, time_residual and col_pred.
+        """
+        if results_samples is None:
+            results_samples = self.get_results_samples(num_samples)
+
+        draws = {"time_trend": [], "time_residual": [], col_pred: []}
+        for results in results_samples:
+            df = self._predict(df.copy(), col_pred=col_pred, results=results)
+            for key in draws.keys():
+                draws[key].append(df[key].to_numpy())
+        for key in draws.keys():
+            draws[key] = np.vstack(draws[key])
+        return draws
+
+    def predict(self,
+                df: pd.DataFrame,
+                col_pred: str = "deaths_pred",
+                include_ci: bool = False,
+                ci_bounds: Tuple[float] = (0.025, 0.975),
+                **kwargs) -> pd.DataFrame:
+        """
+        Predict expected deaths('deaths_pred') from data and model fit
+        """
+        df = self._predict(df, col_pred=col_pred)
+        if include_ci:
+            draws = self.get_draws(df, col_pred=col_pred, **kwargs)
+            for key in draws.keys():
+                df[f"{key}_lower"] = np.quantile(draws[key], ci_bounds[0], axis=0)
+                df[f"{key}_mean"] = np.mean(draws[key], axis=0)
+                df[f"{key}_upper"] = np.quantile(draws[key], ci_bounds[1], axis=0)
         return df
 
 
@@ -145,8 +214,8 @@ def plot_model(ax: plt.Axes,
     return ax
 
 
-def plot_time_trend(ax: plt.Axes, df: pd.DataFrame, 
-        time_unit: str, col_year: str, **options) -> plt.Axes:
+def plot_time_trend(ax: plt.Axes, df: pd.DataFrame,
+                    time_unit: str, col_year: str, **options) -> plt.Axes:
     ax.plot(df.time, df.trend_residual, label='residual', **options)
     ax.plot(df.time, df.time_trend, label='time trend', **options)
     ax.legend()
@@ -180,7 +249,8 @@ def simulate_uncertainty(coef, vcov, parameters, data, num_draws):
 
 class LinearExcessMortalityModel:
     """LinearExcessMortalityModel"""
-    def __init__(self, df: pd.DataFrame, col_obs: str, 
+
+    def __init__(self, df: pd.DataFrame, col_obs: str,
                  stage1_col_covs: List[str], stage2_col_covs: List[str],
                  col_covs_priors: List[str]):
         self.df = df
@@ -200,9 +270,9 @@ class LinearExcessMortalityModel:
         dropna_col_covs = list(set(self.stage1_col_covs) & set(self.df.columns))
         self.data_stage1.attach_df(self.df.dropna(subset=dropna_col_covs))
         self.variables_stage1 = [
-            regmod.variable.Variable(self.stage1_col_covs[ix]) 
-                for ix in range(len(self.stage1_col_covs))
-            ]
+            regmod.variable.Variable(self.stage1_col_covs[ix])
+            for ix in range(len(self.stage1_col_covs))
+        ]
         self.model_stage1 = regmod.model.LinearModel(self.data_stage1, self.variables_stage1)
         self.result_stage1 = regmod.optimizer.scipy_optimize(self.model_stage1)
         self.data_stage1.detach_df()
@@ -228,14 +298,14 @@ class LinearExcessMortalityModel:
         sd = np.sqrt(np.maximum(min_var, np.diag(self.result_stage1["vcov"])))
         slices = regmod.utils.sizes_to_sclices([var.size for var in self.variables_stage1])
         priors = {
-            var_name: regmod.prior.GaussianPrior(mean=mean[slices[i]], sd=sd[slices[i]]) 
+            var_name: regmod.prior.GaussianPrior(mean=mean[slices[i]], sd=sd[slices[i]])
             for i, var_name in enumerate(var_names) if var_name != 'intercept'
         }
         return priors
 
-    def predict(self, df: pd.DataFrame, prediction_interval: bool = False, 
+    def predict(self, df: pd.DataFrame, prediction_interval: bool = False,
                 num_draws: int = 1000) -> pd.DataFrame:
-        dropna_col_covs = list(set(self.stage2_col_covs) & set(df.columns)) 
+        dropna_col_covs = list(set(self.stage2_col_covs) & set(df.columns))
         df = df.dropna(subset=dropna_col_covs)
         data = regmod.data.Data(col_obs=self.col_obs, col_covs=self.stage2_col_covs)
         data.attach_df(df)
