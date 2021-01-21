@@ -107,7 +107,7 @@ class ExcessMortalityModel:
         for i in range(self.num_models):
             self.data[i].attach_df(df)
             pred = self.models[i].parameters[0].get_param(
-                self.results[i]["coefs"], self.data[i]
+                results[i]["coefs"], self.data[i]
             )
             if i + 1 == self.num_models:
                 df[col_pred] = pred
