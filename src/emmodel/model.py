@@ -149,7 +149,7 @@ class ExcessMortalityModel:
         if results_samples is None:
             results_samples = self.get_results_samples(num_samples)
 
-        draws = {"time_trend": [], "time_residual": [], col_pred: []}
+        draws = {"time_trend": [], "trend_residual": [], col_pred: []}
         for results in results_samples:
             df = self._predict(df.copy(), col_pred=col_pred, results=results)
             for key in draws.keys():
