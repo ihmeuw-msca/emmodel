@@ -233,17 +233,17 @@ def plot_time_trend(ax: plt.Axes, df: pd.DataFrame,
     return ax
 
 
-def summarize_uncertainty(lst):
+def summarize_uncertainty(lst, ci_bounds):
     pred_mean = np.mean(lst, axis=0)
-    pred_lower = np.percentile(lst, 2.5, axis=0)
-    pred_upper = np.percentile(lst, 97.5, axis=0)
+    pred_lower = np.percentile(lst, ci_bounds[0], axis=0)
+    pred_upper = np.percentile(lst, ci_bounds[1], axis=0)
     return pred_mean, pred_lower, pred_upper
 
 
-def simulate_uncertainty(coef, vcov, parameters, data, num_draws):
-    coef_sims = np.random.multivariate_normal(coef, vcov, num_draws)
+def simulate_uncertainty(coef, vcov, parameters, data, num_samples, ci_bounds):
+    coef_sims = np.random.multivariate_normal(coef, vcov, num_samples)
     lst_pred = [parameters.get_param(coef_sim, data) for coef_sim in coef_sims]
-    pred_mean, pred_lower, pred_upper = summarize_uncertainty(lst_pred)
+    pred_mean, pred_lower, pred_upper = summarize_uncertainty(lst_pred, ci_bounds)
     return pred_mean, pred_lower, pred_upper
 
 
@@ -303,18 +303,18 @@ class LinearExcessMortalityModel:
         }
         return priors
 
-    def predict(self, df: pd.DataFrame, prediction_interval: bool = False,
-                num_draws: int = 1000) -> pd.DataFrame:
+    def predict(self, df: pd.DataFrame, include_ci: bool = False,
+                num_samples: int = 1000, ci_bounds: Tuple[float] = (0.025, 0.975)) -> pd.DataFrame:
         dropna_col_covs = list(set(self.stage2_col_covs) & set(df.columns))
         df = df.dropna(subset=dropna_col_covs)
         data = regmod.data.Data(col_obs=self.col_obs, col_covs=self.stage2_col_covs)
         data.attach_df(df)
-        if not prediction_interval:
-            df['pred'] = self.model_stage2.parameters[0].get_param(self.result_stage2['coefs'], data)
-        else:
+        if include_ci:
             coef, vcov = self.result_stage2['coefs'], self.result_stage2['vcov']
             parameters = self.model_stage2.parameters[0]
             df['pred_mean'], df['pred_lower'], df['pred_upper'] = \
-                simulate_uncertainty(coef, vcov, parameters, data, num_draws)
+                simulate_uncertainty(coef, vcov, parameters, data, num_samples, ci_bounds)
+        else:
+            df['pred'] = self.model_stage2.parameters[0].get_param(self.result_stage2['coefs'], data)
         data.detach_df()
         return df
