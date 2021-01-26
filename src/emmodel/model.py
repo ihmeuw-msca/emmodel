@@ -163,17 +163,22 @@ class ExcessMortalityModel:
                 col_pred: str = "deaths_pred",
                 include_ci: bool = False,
                 ci_bounds: Tuple[float] = (0.025, 0.975),
+                num_samples: int = 1000,
+                return_draws: bool = False,
                 **kwargs) -> pd.DataFrame:
         """
         Predict expected deaths('deaths_pred') from data and model fit
         """
         df = self._predict(df, col_pred=col_pred)
         if include_ci:
-            draws = self.get_draws(df, col_pred=col_pred, **kwargs)
+            draws = self.get_draws(df, col_pred=col_pred, num_samples=num_samples, **kwargs)
             for key in draws.keys():
                 df[f"{key}_lower"] = np.quantile(draws[key], ci_bounds[0], axis=0)
                 df[f"{key}_mean"] = np.mean(draws[key], axis=0)
                 df[f"{key}_upper"] = np.quantile(draws[key], ci_bounds[1], axis=0)
+                
+                if return_draws:
+                    df[[f"{key}_draw_{i}" for i in range(1, num_samples+1)]] = draws[key].T
         return df
 
 
@@ -244,7 +249,7 @@ def simulate_uncertainty(coef, vcov, parameters, data, num_samples, ci_bounds):
     coef_sims = np.random.multivariate_normal(coef, vcov, num_samples)
     lst_pred = [parameters.get_param(coef_sim, data) for coef_sim in coef_sims]
     pred_mean, pred_lower, pred_upper = summarize_uncertainty(lst_pred, ci_bounds)
-    return pred_mean, pred_lower, pred_upper
+    return pred_mean, pred_lower, pred_upper, lst_pred
 
 
 class LinearExcessMortalityModel:
@@ -304,7 +309,8 @@ class LinearExcessMortalityModel:
         return priors
 
     def predict(self, df: pd.DataFrame, include_ci: bool = False,
-                num_samples: int = 1000, ci_bounds: Tuple[float] = (0.025, 0.975)) -> pd.DataFrame:
+                num_samples: int = 1000, ci_bounds: Tuple[float] = (0.025, 0.975),
+                return_draws: bool = False) -> pd.DataFrame:
         dropna_col_covs = list(set(self.stage2_col_covs) & set(df.columns))
         df = df.dropna(subset=dropna_col_covs)
         data = regmod.data.Data(col_obs=self.col_obs, col_covs=self.stage2_col_covs)
@@ -312,8 +318,12 @@ class LinearExcessMortalityModel:
         if include_ci:
             coef, vcov = self.result_stage2['coefs'], self.result_stage2['vcov']
             parameters = self.model_stage2.parameters[0]
-            df['pred_mean'], df['pred_lower'], df['pred_upper'] = \
+            pred_mean, pred_lower, pred_upper, lst_pred = \
                 simulate_uncertainty(coef, vcov, parameters, data, num_samples, ci_bounds)
+            df['pred_mean'], df['pred_lower'], df['pred_upper'] = pred_mean, pred_lower, pred_upper
+
+            if return_draws:
+                df[[f'pred_{i}' for i in range(1, num_samples+1)]] = np.array(lst_pred).T
         else:
             df['pred'] = self.model_stage2.parameters[0].get_param(self.result_stage2['coefs'], data)
         data.detach_df()
