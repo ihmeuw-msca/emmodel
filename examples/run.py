@@ -142,5 +142,6 @@ if __name__ == "__main__":
     # inputs
     i_folder = "examples/data"
     o_folder = "examples/results"
+    locations = ["AUT"]
 
-    main(DataManager(i_folder, o_folder))
+    main(DataManager(i_folder, o_folder, locations))
