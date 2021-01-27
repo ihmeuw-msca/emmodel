@@ -16,6 +16,7 @@ from emmodel.utils import YearTime
 class DataManager:
     i_folder: str
     o_folder: str
+    locations: List[str] = None
 
     def __post_init__(self):
         self.i_folder = Path(self.i_folder)
@@ -30,7 +31,12 @@ class DataManager:
             self.o_folder.mkdir()
 
         self.meta = self.get_meta()
-        self.locations = list(self.meta.keys())
+        if self.locations is None:
+            self.locations = list(self.meta.keys())
+        else:
+            for location in self.locations:
+                if location not in self.meta:
+                    raise ValueError(f"{location} not in meta file.")
 
     def get_meta(self):
         with open(self.i_folder / "meta.yaml", "r") as f:
