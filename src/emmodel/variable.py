@@ -46,18 +46,20 @@ class SeasonalityModelVariables(ModelVariables):
     def __init__(self,
                  variables: List[regmod.variable.Variable],
                  col_time: str,
+                 smooth_order: int,
                  **kwargs):
         super().__init__(variables, **kwargs)
         if not col_time in self.var_names:
             raise ValueError(f"SeasonalityModelVariables must include {col_time}.")
         self.time_var = self.var_dict[col_time]
+        self.smooth_order = smooth_order
 
     def get_model(self, data: regmod.data.Data) -> regmod.model.PoissonModel:
         self.time_var.check_data(data)
         mat = np.vstack([
             self.time_var.spline.design_dmat(self.time_var.spline.knots[0], order=i) -
             self.time_var.spline.design_dmat(self.time_var.spline.knots[-1] + 1, order=i, r_extra=True)
-            for i in range(1)
+            for i in range(self.smooth_order)
         ])
         self.time_var.add_priors(regmod.prior.LinearUniformPrior(mat=mat, ub=0.0, lb=0.0))
         return super().get_model(data)

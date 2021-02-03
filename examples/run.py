@@ -62,7 +62,8 @@ def get_mortality_pattern_model(df: DataFrame,
                                 col_time: str = "time_start",
                                 units_per_year: int = 12,
                                 knots_per_year: float = 0.5,
-                                tail_size: int = 18) -> ExcessMortalityModel:
+                                tail_size: int = 18,
+                                smooth_order: int=1) -> ExcessMortalityModel:
     seas_spline_specs = SplineSpecs(knots=np.linspace(0.0, 1.0, 5),
                                     degree=3,
                                     knots_type="rel_domain")
@@ -77,7 +78,7 @@ def get_mortality_pattern_model(df: DataFrame,
     seas_var = SplineVariable(col_time, spline_specs=seas_spline_specs)
     time_var = SplineVariable("time", spline_specs=time_spline_specs)
     variables = [
-        SeasonalityModelVariables([seas_var], col_time),
+        SeasonalityModelVariables([seas_var], col_time, smooth_order),
         TimeModelVariables([time_var])
     ]
     return ExcessMortalityModel(df, variables)
@@ -92,11 +93,13 @@ def get_mortality_pattern_models(dm: DataManager,
         units_per_year = dm.meta[location]["time_start"].units_per_year
         tail_size = dm.meta[location]["tail_size"]
         knots_per_year = dm.meta[location]["knots_per_year"]
+        smooth_order = dm.meta[location]["smooth_order"]
         models[name] = get_mortality_pattern_model(dfs[0],
                                                    col_time,
                                                    units_per_year,
                                                    knots_per_year,
-                                                   tail_size)
+                                                   tail_size,
+                                                   smooth_order)
     return models
 
 
