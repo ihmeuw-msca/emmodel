@@ -7,7 +7,12 @@ import numpy as np
 import matplotlib.ticker as tkr
 import matplotlib.pyplot as plt
 import pandas as pd
-import regmod
+from regmod.variable import Variable
+from regmod.optimizer import scipy_optimize
+from regmod.models import GaussianModel
+from regmod.data import Data
+from regmod.utils import sizes_to_sclices
+from regmod.prior import GaussianPrior
 
 from emmodel.variable import ModelVariables
 
@@ -28,9 +33,9 @@ class ExcessMortalityModel:
             for var_name in variables.var_names
         ]
         self.data = [
-            regmod.data.Data(col_obs=col_obs,
-                             col_covs=col_covs,
-                             col_offset=f"offset_{i}")
+            Data(col_obs=col_obs,
+                 col_covs=col_covs,
+                 col_offset=f"offset_{i}")
             for i in range(self.num_models)
         ]
         self.models = []
@@ -40,8 +45,8 @@ class ExcessMortalityModel:
         for i in range(self.num_models):
             self.data[i].attach_df(self.df)
             self.models.append(self.model_variables[i].get_model(self.data[i]))
-            self.results.append(regmod.optimizer.scipy_optimize(self.models[i]))
-            pred = self.models[i].parameters[0].get_param(
+            self.results.append(scipy_optimize(self.models[i]))
+            pred = self.models[i].params[0].get_param(
                 self.results[i]["coefs"], self.data[i]
             )
             if i + 1 == self.num_models:
@@ -106,7 +111,7 @@ class ExcessMortalityModel:
         results = self.results if results is None else results
         for i in range(self.num_models):
             self.data[i].attach_df(df)
-            pred = self.models[i].parameters[0].get_param(
+            pred = self.models[i].params[0].get_param(
                 results[i]["coefs"], self.data[i]
             )
             if i + 1 == self.num_models:
@@ -134,7 +139,7 @@ class ExcessMortalityModel:
             Dataframe that contains information of the model data.
         col_pred : str, optional
             Name of the final prediction column, by default "deaths_pred"
-        num_samples : int, optional 
+        num_samples : int, optional
             Number of samples, by default 1000. Only use when results_samples
             is None.
         results_samples : List[List[Dict]], optional
@@ -176,7 +181,7 @@ class ExcessMortalityModel:
                 df[f"{key}_lower"] = np.quantile(draws[key], ci_bounds[0], axis=0)
                 df[f"{key}_mean"] = np.mean(draws[key], axis=0)
                 df[f"{key}_upper"] = np.quantile(draws[key], ci_bounds[1], axis=0)
-                
+
                 if return_draws:
                     df[[f"{key}_draw_{i}" for i in range(1, num_samples+1)]] = draws[key].T
         return df
@@ -263,8 +268,8 @@ class LinearExcessMortalityModel:
         self.stage1_col_covs = stage1_col_covs
         self.stage2_col_covs = stage2_col_covs
         self.col_covs_priors = col_covs_priors
-        self.data_stage1 = regmod.data.Data(col_obs=self.col_obs, col_covs=self.stage1_col_covs)
-        self.data_stage2 = regmod.data.Data(col_obs=self.col_obs, col_covs=self.stage2_col_covs)
+        self.data_stage1 = Data(col_obs=self.col_obs, col_covs=self.stage1_col_covs)
+        self.data_stage2 = Data(col_obs=self.col_obs, col_covs=self.stage2_col_covs)
 
     def run(self, prior_min_var: float = 0.1):
         self.run_stage_1()
@@ -275,11 +280,12 @@ class LinearExcessMortalityModel:
         dropna_col_covs = list(set(self.stage1_col_covs) & set(self.df.columns))
         self.data_stage1.attach_df(self.df.dropna(subset=dropna_col_covs))
         self.variables_stage1 = [
-            regmod.variable.Variable(self.stage1_col_covs[ix])
+            Variable(self.stage1_col_covs[ix])
             for ix in range(len(self.stage1_col_covs))
         ]
-        self.model_stage1 = regmod.model.LinearModel(self.data_stage1, self.variables_stage1)
-        self.result_stage1 = regmod.optimizer.scipy_optimize(self.model_stage1)
+        self.model_stage1 = GaussianModel(self.data_stage1,
+                                          param_specs={"mu": {"variables": self.variables_stage1}})
+        self.result_stage1 = scipy_optimize(self.model_stage1)
         self.data_stage1.detach_df()
 
     def run_stage_2(self):
@@ -288,22 +294,23 @@ class LinearExcessMortalityModel:
         self.variables_stage2 = []
         # Add priors for specified covariates
         for cov in self.col_covs_priors:
-            self.variables_stage2.append(regmod.variable.Variable(cov, priors=[self.priors[cov]]))
+            self.variables_stage2.append(Variable(cov, priors=[self.priors[cov]]))
         # Include other covariates
         for cov in self.stage2_col_covs:
             if cov not in self.col_covs_priors:
-                self.variables_stage2.append(regmod.variable.Variable(cov))
-        self.model_stage2 = regmod.model.LinearModel(self.data_stage2, self.variables_stage2)
-        self.result_stage2 = regmod.optimizer.scipy_optimize(self.model_stage2)
+                self.variables_stage2.append(Variable(cov))
+        self.model_stage2 = GaussianModel(self.data_stage2,
+                                          param_specs={"mu": {"variables": self.variables_stage2}})
+        self.result_stage2 = scipy_optimize(self.model_stage2)
         self.data_stage2.detach_df()
 
     def result_to_priors(self, min_var: float = 0.1) -> Dict:
         mean = self.result_stage1["coefs"]
         var_names = [variable.name for variable in self.variables_stage1]
         sd = np.sqrt(np.maximum(min_var, np.diag(self.result_stage1["vcov"])))
-        slices = regmod.utils.sizes_to_sclices([var.size for var in self.variables_stage1])
+        slices = sizes_to_sclices([var.size for var in self.variables_stage1])
         priors = {
-            var_name: regmod.prior.GaussianPrior(mean=mean[slices[i]], sd=sd[slices[i]])
+            var_name: GaussianPrior(mean=mean[slices[i]], sd=sd[slices[i]])
             for i, var_name in enumerate(var_names) if var_name != 'intercept'
         }
         return priors
@@ -313,11 +320,11 @@ class LinearExcessMortalityModel:
                 return_draws: bool = False) -> pd.DataFrame:
         dropna_col_covs = list(set(self.stage2_col_covs) & set(df.columns))
         df = df.dropna(subset=dropna_col_covs)
-        data = regmod.data.Data(col_obs=self.col_obs, col_covs=self.stage2_col_covs)
+        data = Data(col_obs=self.col_obs, col_covs=self.stage2_col_covs)
         data.attach_df(df)
         if include_ci:
             coef, vcov = self.result_stage2['coefs'], self.result_stage2['vcov']
-            parameters = self.model_stage2.parameters[0]
+            parameters = self.model_stage2.params[0]
             pred_mean, pred_lower, pred_upper, lst_pred = \
                 simulate_uncertainty(coef, vcov, parameters, data, num_samples, ci_bounds)
             df['pred_mean'], df['pred_lower'], df['pred_upper'] = pred_mean, pred_lower, pred_upper
@@ -325,6 +332,6 @@ class LinearExcessMortalityModel:
             if return_draws:
                 df[[f'pred_{i}' for i in range(1, num_samples+1)]] = np.array(lst_pred).T
         else:
-            df['pred'] = self.model_stage2.parameters[0].get_param(self.result_stage2['coefs'], data)
+            df['pred'] = self.model_stage2.params[0].get_param(self.result_stage2['coefs'], data)
         data.detach_df()
         return df
