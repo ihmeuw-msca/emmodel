@@ -28,6 +28,7 @@ results_path = Path("./examples/results")
 # create variables
 variables = ModelVariables(
     [Variable("intercept"),
+     Variable("log_death_rate_covid"),
      SplineVariable("idr_lagged",
                     spline_specs=SplineSpecs(
                         knots=np.linspace(0.0, 1.0, 3),
@@ -42,8 +43,9 @@ variables = ModelVariables(
 cascade_specs = CascadeSpecs(
     model_variables=[variables],
     prior_masks={"intercept": [1.0],
+                 "log_death_rate_covid": [0.01],
                  "idr_lagged": [1.0, 1.0, 1.0]},
-    level_masks=[1.0, 1.0, 1.0, 1.0],
+    level_masks=[1.0, 1.0, 100.0],
     col_obs="logit_ratio_0_7"
 )
 
@@ -131,8 +133,8 @@ def main():
             )
 
     # fixed the spline shape
-    coefs = pre_model.results[0]["coefs"][1:]
-    variables.variables[1].add_priors(UniformPrior(lb=coefs, ub=coefs))
+    coefs = pre_model.results[0]["coefs"][2:]
+    variables.variables[-1].add_priors(UniformPrior(lb=coefs, ub=coefs))
     cascade_specs.model_variables = [variables]
 
     # construct cascade model
@@ -182,10 +184,11 @@ def main():
         "idr_lagged": np.linspace(df.idr_lagged.min(),
                                   df.idr_lagged.max(), 100)
     })
-    pred_dfs = {
-        model.name: predict(df_pred, model.model)
-        for model in model_list
-    }
+    pred_dfs = {}
+    for model in model_list:
+        for cov in ["log_death_rate_covid"]:
+            df_pred[cov] = model.df[cov].mean()
+        pred_dfs[model.name] = predict(df_pred, model.model)
 
     # plot
     for loc_id in df.ihme_loc_id.unique():
