@@ -20,7 +20,8 @@ use_death_rate_covid = True
 model_type = "Poisson"
 cov = "death_rate_covid" if use_death_rate_covid else "deaths_covid"
 
-o_folder = Path(f"/Users/jiaweihe/Downloads/mortality/results/test_cause_specific_{cov}_{model_type}_{level}/")
+# Output folder
+o_folder = Path(f"~/Downloads/mortality/results/test_cause_specific_{cov}_{model_type}_{level}/")
 if not o_folder.exists():
     o_folder.mkdir()
 
@@ -34,7 +35,7 @@ def flatten_dict(d: Dict, parent_key='', sep='_'):
             items.append((new_key, v))
     return dict(items)
 
-
+# Process input data
 df = pd.read_csv("~/Downloads/doc/data/cause_specific/for_Peng_non_natural_cause.csv")
 df_2020 = df.loc[:,['location_name','year_x','week','pop_2020',
     'covid_rate', 'death_rate_2020']]
@@ -45,10 +46,12 @@ df_2019 = df_2019.rename(columns={'year_y':'year','pop_2019':'population',
 	'death_rate_2019':'death_rate'})
 df_2019['death_rate_covid'] = 0
 df_all = df_2019.append(df_2020)
-df_all['deaths'] = df_all['death_rate'] * df_all['population'] / 1000
-df_all['deaths_covid'] = df_all['death_rate_covid'] * df_all['population'] / 1000
+df_all['deaths'] = df_all['death_rate'] * df_all['population'] / 100000
+df_all['deaths_covid'] = df_all['death_rate_covid'] * df_all['population'] / 100000
 
+# Start time
 time_start = (2019, 1)
+# First 9 weeks without COVID
 time_end_0 = (2020, 9)
 time_end_1 = (2020, 50)
 time_ub_0 = (time_end_0[0] - time_start[0])*52 + time_end_0[1] - time_start[1] + 1
@@ -63,28 +66,23 @@ for location in df_all.location_name.unique():
 	data_0[location] = df_loc.loc[df_loc.time < time_ub_0]
 	data_1[location] = df_loc.loc[df_loc.time < time_ub_1]
 
+# Spline specification for seasonality
 seas_spline_specs = SplineSpecs(knots=np.linspace(1, 52, 3),
                                 degree=2,
                                 r_linear=True,
                                 knots_type="abs")
-time_spline_specs = SplineSpecs(knots=np.linspace(0.0, 1.0, 5),
-                                degree=3,
-                                knots_type="rel_domain")
+# Time unit
 col_time = 'week'
 models = {}
 for name, df in data_0.items():
     df["offset_0"] = np.log(df.population)
     seas_var = SplineVariable(col_time, spline_specs=seas_spline_specs)
-    time_var = SplineVariable("time", spline_specs=time_spline_specs)
-    # variables = [
-    #     SeasonalityModelVariables([seas_var], col_time),
-    #     TimeModelVariables([time_var])
-    # ]
     variables = [
         SeasonalityModelVariables([seas_var], col_time, smooth_order=1)
     ]
     models[name] = ExcessMortalityModel(df, variables)
 
+# Run models
 results = {}
 for name, model in models.items():
     print(f"  fit {name}")
@@ -103,9 +101,8 @@ elif model_type == "Linear":
 else:
     raise Exception(f"Not valid model_type: {model_type}")
 
-
+# Cascade
 covid_var = Variable(cov, priors=[UniformPrior(lb=-np.inf, ub=np.inf)])
-
 variables = [ModelVariables([covid_var], model_type=model_type)]
 specs = CascadeSpecs(variables, **cascade_specs)
 
@@ -148,10 +145,11 @@ results["cascade_coefs"].sort_values("coef", inplace=True)
 
 data_age_cc = cmodels, results
 leaf_cmodels = data_age_cc[0][1]
-# leaf_cmodels.update(flatten_dict(data_age_cc[0][2]))
-
+# Save results
 results["cascade_coefs"].to_csv(o_folder / "coefs.csv", index=False)
+results["all"].to_csv(o_folder / "results.csv", index=False)
 
+# Plot results
 for name, cmodel in leaf_cmodels.items():
     df = cmodel.model.df
     name = name.replace(" ", "_")
