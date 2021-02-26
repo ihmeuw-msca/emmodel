@@ -57,6 +57,23 @@ class ExcessMortalityModel:
                 self.df[f"offset_{i + 1}"] = np.log(pred)
             self.data[i].detach_df()
 
+    def get_coefs_df(self) -> pd.DataFrame:
+        coefs = {}
+        for i in range(self.num_models):
+            variable_names = []
+            for param in self.models[i].params:
+                for variable in param.variables:
+                    if variable.size == 1:
+                        variable_names.append(variable.name)
+                    else:
+                        variable_names.extend([f"{variable.name}_{i}"
+                                               for i in range(variable.size)])
+            coefs.update({
+                variable_name: self.results[i]["coefs"][j]
+                for j, variable_name in enumerate(variable_names)
+            })
+        return pd.DataFrame(coefs, index=[0])
+
     def get_results_samples(self, num_samples: int = 1000) -> List[List[Dict]]:
         """
         Get the samples of results.
