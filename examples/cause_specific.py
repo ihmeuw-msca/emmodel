@@ -88,6 +88,8 @@ def main():
         results[location] = d_pred
 
     # save results
+    if not results_folder.exists():
+        results_folder.mkdir()
     df_result = pd.concat(results.values())
     df_result.to_csv(results_folder / "prediction.csv", index=False)
 
