@@ -52,10 +52,11 @@ cascade_specs = CascadeSpecs(
 
 # prediction function
 def predict(df_pred: pd.DataFrame,
-            model: ExcessMortalityModel) -> pd.DataFrame:
+            model: ExcessMortalityModel,
+            col_pred: str = "logit_ratio_0_7") -> pd.DataFrame:
     df_pred = df_pred.copy()
     model.data[0].attach_df(df_pred)
-    df_pred["logit_ratio_0_7"] = model.models[0].params[0].get_param(
+    df_pred[col_pred] = model.models[0].params[0].get_param(
         model.results[0]["coefs"], model.data[0]
     )
     return df_pred
@@ -108,6 +109,10 @@ def main():
     df = pd.read_csv(data_path)
     df = df[df.include].reset_index(drop=True)
 
+    # create results folder
+    if not results_path.exists():
+        results_path.mkdir()
+
     # pre-analysis getting prior
     # exclude Russian for better curve
     pre_model = ExcessMortalityModel(
@@ -116,6 +121,17 @@ def main():
         col_obs="logit_ratio_0_7"
     )
     pre_model.run_models()
+    # create idr_lagged spline dictionary
+    num_points = 100
+    df_pred = pd.DataFrame({
+        name: np.zeros(num_points)
+        for name in pre_model.model_variables[0].var_names
+    })
+    df_pred["idr_lagged"] = np.linspace(df.idr_lagged.min(),
+                                        df.idr_lagged.max(), num_points)
+    df_pred = predict(df_pred, pre_model, col_pred="pred")
+    df_pred = df_pred[["idr_lagged", "pred"]].reset_index(drop=True)
+    df_pred.to_csv(results_path / "idr_lagged_spline.csv", index=False)
 
     # getting location structure
     location_structure = {}
@@ -191,8 +207,6 @@ def main():
         pred_dfs[model.name] = predict(df_pred, model.model)
 
     # plot
-    if not results_path.exists():
-        results_path.mkdir()
     for loc_id in df.ihme_loc_id.unique():
         df_sub = df[df.ihme_loc_id == loc_id]
         super_region = df_sub.super_region_name.values[0]
