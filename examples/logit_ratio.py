@@ -191,6 +191,8 @@ def main():
         pred_dfs[model.name] = predict(df_pred, model.model)
 
     # plot
+    if not results_path.exists():
+        results_path.mkdir()
     for loc_id in df.ihme_loc_id.unique():
         df_sub = df[df.ihme_loc_id == loc_id]
         super_region = df_sub.super_region_name.values[0]
