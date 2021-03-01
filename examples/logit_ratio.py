@@ -140,7 +140,7 @@ def main():
         location_structure[super_region] = {}
         for region in regions:
             location_structure[super_region][region] = list(
-                df[df.region_name == region].ihme_loc_id
+                df[df.region_name == region].ihme_loc_id.unique()
             )
 
     # fixed the spline shape
