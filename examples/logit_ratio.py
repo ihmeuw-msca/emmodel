@@ -20,7 +20,7 @@ from emmodel.cascade import CascadeSpecs, Cascade
 
 
 # data file path
-data_path = "./examples/data/stage_2_input_data.csv"
+data_path = "./examples/data/fit_data.csv"
 
 # result folder
 results_path = Path("./examples/results")
@@ -68,9 +68,11 @@ def link_cascade_models(root_model: Cascade,
                         model_structure: Union[Dict, List]):
     if isinstance(model_structure, dict):
         sub_model_names = model_structure.keys()
+        sub_models = leaf_models[0]
     else:
         sub_model_names = model_structure
-    sub_models = [model for model in leaf_models[0] if model.name in sub_model_names]
+        sub_models = leaf_models[-1]
+    sub_models = [model for model in sub_models if model.name in sub_model_names]
     root_model.add_children(sub_models)
 
     if isinstance(model_structure, dict):
