@@ -40,8 +40,10 @@ variables = ModelVariables(
 )
 
 # construct the cascade model specification
+idr_variable = ModelVariables([variables.variables[-1]], model_type="Linear")
+other_variables = ModelVariables(variables.variables[:2], model_type="Linear")
 cascade_specs = CascadeSpecs(
-    model_variables=[variables],
+    model_variables=[idr_variable, other_variables],
     prior_masks={"intercept": [1.0],
                  "log_death_rate_covid": [0.01],
                  "idr_lagged": [1.0, 1.0, 1.0]},
@@ -49,16 +51,24 @@ cascade_specs = CascadeSpecs(
     col_obs="logit_ratio_0_7"
 )
 
+# sample setting
+num_samples = 1000
+np.random.seed(123)
+
 
 # prediction function
 def predict(df_pred: pd.DataFrame,
             model: ExcessMortalityModel,
             col_pred: str = "logit_ratio_0_7") -> pd.DataFrame:
     df_pred = df_pred.copy()
-    model.data[0].attach_df(df_pred)
-    df_pred[col_pred] = model.models[0].params[0].get_param(
-        model.results[0]["coefs"], model.data[0]
-    )
+    pred = np.zeros(df_pred.shape[0])
+    for i in range(model.num_models):
+        model.data[i].attach_df(df_pred)
+        pred = pred + model.models[i].params[0].get_param(
+            model.results[i]["coefs"], model.data[i]
+        )
+        model.data[i].detach_df()
+    df_pred[col_pred] = pred
     return df_pred
 
 
@@ -79,7 +89,7 @@ def link_cascade_models(root_model: Cascade,
 
 
 # plot result
-def plot_model(df, pred_dfs, locations):
+def plot_model(df, pred_dfs, locations) -> plt.Axes:
     _, ax = plt.subplots(figsize=(8, 5))
     ax.scatter(df.idr_lagged, df.logit_ratio_0_7, color="gray")
     colors = ["red", "#E88734", "#008080", "#172128"]
@@ -101,7 +111,21 @@ def plot_model(df, pred_dfs, locations):
     ax.set_ylabel("logit_ratio_0_7")
     ax.set_title(locations[-1])
     ax.legend()
-    plt.savefig(results_path / f"{locations[-1]}.pdf", bbox_inches="tight")
+    return ax
+
+
+def sample_coefs(cmodel: Cascade) -> pd.DataFrame:
+    model = cmodel.model
+    coefs = np.random.multivariate_normal(
+        mean=model.results[-1]["coefs"],
+        cov=model.results[-1]["vcov"],
+        size=num_samples
+    )
+    return pd.DataFrame(
+        coefs,
+        columns=[variable.name
+                 for variable in model.models[-1].params[0].variables]
+    )
 
 
 def main():
@@ -144,13 +168,12 @@ def main():
             )
 
     # fixed the spline shape
-    coefs = pre_model.results[0]["coefs"][2:]
-    variables.variables[-1].add_priors(UniformPrior(lb=coefs, ub=coefs))
-    cascade_specs.model_variables = [variables]
+    coefs = pre_model.results[0]["coefs"][len(other_variables.variables):]
+    idr_variable.variables[0].add_priors(UniformPrior(lb=coefs, ub=coefs))
 
     # construct cascade model
     # global model
-    global_model = Cascade(df, cascade_specs, level_id=0, name="global")
+    global_model = Cascade(df, cascade_specs, level_id=0, name="Global")
 
     # super region model
     super_region_models = [
@@ -207,6 +230,7 @@ def main():
         super_region = df_sub.super_region_name.values[0]
         region = df_sub.region_name.values[0]
         plot_model(df, pred_dfs, ["global", super_region, region, loc_id])
+        plt.savefig(results_path / f"{loc_id}.pdf", bbox_inches="tight")
         plt.close("all")
 
     # create results dataframe
@@ -214,6 +238,11 @@ def main():
     coefs["location"] = [model.name for model in model_list]
 
     coefs.to_csv(results_path / "coefs.csv", index=False)
+
+    # create samples of the coefficient
+    for cmodel in model_list:
+        df_coefs = sample_coefs(cmodel)
+        df_coefs.to_csv(results_path / f"cdraws_{cmodel.name}.csv", index=False)
 
     return model_list
 
