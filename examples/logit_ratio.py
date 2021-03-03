@@ -242,7 +242,7 @@ def main():
     # create samples of the coefficient
     for cmodel in model_list:
         df_coefs = sample_coefs(cmodel)
-        df_coefs.to_csv(results_path / f"cdraws_{cmodel.name}.csv", index=False)
+        df_coefs.to_csv(results_path / f"cdraws_{cmodel.level_id}_{cmodel.name}.csv", index=False)
 
     return model_list
 
