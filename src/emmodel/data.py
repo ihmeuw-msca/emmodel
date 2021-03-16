@@ -62,7 +62,7 @@ class DataManager:
         df = pd.read_csv(self.i_folder / f"{location}.csv", low_memory=False)
         df = select_cols(df, [col_year, col_time] + col_data)
         df = select_groups(df, group_specs)
-        df = df[~df.deaths.isna()].reset_index(drop=True)
+        # df = df[~df.deaths.isna()].reset_index(drop=True)
         if df.empty:
             raise ValueError(f"Location {location} has no matching data for {group_specs}.")
         df = add_time(df, col_year, col_time, time_start)

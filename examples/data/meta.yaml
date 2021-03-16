@@ -45,6 +45,7 @@ default:
     - female
   knots_per_year: 0.5
   tail_size: 72
+  smooth_order: 1
 
 
 USA:

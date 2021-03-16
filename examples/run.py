@@ -25,6 +25,8 @@ def get_group_specific_data(dm: DataManager,
     data = []
     for i in range(2):
         df_sub = dm.truncate_time_location(location, df, time_end_id=i)
+        if i == 0:
+            df_sub = df_sub[~df_sub.deaths.isna()].reset_index(drop=True)
         df_sub["offset_0"] = np.log(df_sub.population)
         data.append(df_sub)
     return data
@@ -63,7 +65,7 @@ def get_mortality_pattern_model(df: DataFrame,
                                 units_per_year: int = 12,
                                 knots_per_year: float = 0.5,
                                 tail_size: int = 18,
-                                smooth_order: int=1) -> ExcessMortalityModel:
+                                smooth_order: int = 1) -> ExcessMortalityModel:
     seas_spline_specs = SplineSpecs(knots=np.linspace(0.0, 1.0, 5),
                                     degree=3,
                                     knots_type="rel_domain")
