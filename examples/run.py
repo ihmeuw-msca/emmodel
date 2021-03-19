@@ -147,6 +147,7 @@ if __name__ == "__main__":
     # inputs
     i_folder = "examples/data"
     o_folder = "examples/results"
+    meta_filename = "meta.yaml"
     locations = ["AUT"]
 
-    main(DataManager(i_folder, o_folder, locations))
+    main(DataManager(i_folder, o_folder, meta_filename, locations))
