@@ -16,6 +16,7 @@ from emmodel.utils import YearTime
 class DataManager:
     i_folder: str
     o_folder: str
+    meta_filename: str = "meta.yaml"
     locations: List[str] = None
 
     def __post_init__(self):
@@ -39,7 +40,7 @@ class DataManager:
                     raise ValueError(f"{location} not in meta file.")
 
     def get_meta(self):
-        with open(self.i_folder / "meta.yaml", "r") as f:
+        with open(self.i_folder / self.meta_filename, "r") as f:
             meta = yaml.load(f, Loader=yaml.FullLoader)
         default = meta.pop("default")
         for location in meta:
