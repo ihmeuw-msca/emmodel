@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 from regmod.variable import Variable, SplineVariable
 from regmod.utils import SplineSpecs
-from regmod.prior import UniformPrior
+from regmod.prior import UniformPrior, SplineUniformPrior
 from emmodel.model import ExcessMortalityModel
 from emmodel.variable import ModelVariables
 from emmodel.cascade import CascadeSpecs, Cascade
@@ -35,7 +35,8 @@ variables = ModelVariables(
                         degree=2,
                         knots_type="rel_domain",
                         include_first_basis=False
-                    ))],
+                    ),
+                    priors=[SplineUniformPrior(order=1, lb=-np.inf, ub=0.0)])],
     model_type="Linear"
 )
 
