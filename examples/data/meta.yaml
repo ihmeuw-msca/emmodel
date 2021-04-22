@@ -10,7 +10,7 @@ default:
     - deaths_covid
   time_unit: week
   time_start:
-    year: 2010
+    year: 2015
     detailed: 1
   time_end_0: 
     year: 2020
