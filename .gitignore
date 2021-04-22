@@ -137,3 +137,6 @@ examples/results*
 
 # mac-os
 .DS_Store
+
+# jupyter notebooks
+notebooks/
