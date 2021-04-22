@@ -45,35 +45,25 @@ def get_data(dm: DataManager) -> Dict[str, List[DataFrame]]:
 
 def get_time_knots(time_min: int,
                    time_max: int,
-                   units_per_year: int,
-                   knots_per_year: float,
-                   tail_size: int) -> np.ndarray:
-    body_size = time_max - time_min - tail_size + 1
-    num_body_knots = int(knots_per_year*body_size/units_per_year) + 1
-    if num_body_knots < 2:
-        time_knots = np.array([time_min, time_max])
-    else:
-        time_knots = np.hstack([
-            np.linspace(time_min, time_max - tail_size, num_body_knots),
-            time_max
-        ])
+                   knots: np.ndarray) -> np.ndarray:
+    time_knots = np.hstack([time_min, [
+        k for k in knots
+        if k > time_min and k < time_max
+    ], time_max])
     return time_knots
 
 
 def get_mortality_pattern_model(df: DataFrame,
                                 col_time: str = "time_start",
                                 units_per_year: int = 12,
-                                knots_per_year: float = 0.5,
-                                tail_size: int = 18,
+                                knots: np.ndarray = np.arange(2010, 2021),
                                 smooth_order: int = 1) -> ExcessMortalityModel:
     seas_spline_specs = SplineSpecs(knots=np.linspace(0.0, 1.0, 5),
                                     degree=3,
                                     knots_type="rel_domain")
     time_knots = get_time_knots(df.time.min(),
                                 df.time.max(),
-                                units_per_year,
-                                knots_per_year,
-                                tail_size)
+                                knots)
     time_spline_specs = SplineSpecs(knots=time_knots,
                                     degree=1,
                                     knots_type="abs")
@@ -92,15 +82,14 @@ def get_mortality_pattern_models(dm: DataManager,
     for name, dfs in data.items():
         location = name.split("-")[0]
         col_time = dm.meta[location]["col_time"]
-        units_per_year = dm.meta[location]["time_start"].units_per_year
-        tail_size = dm.meta[location]["tail_size"]
-        knots_per_year = dm.meta[location]["knots_per_year"]
+        time_start = dm.meta[location]["time_start"]
+        units_per_year = time_start.units_per_year
+        knots = (np.array(dm.meta[location]["knots"]) - time_start.year)*units_per_year
         smooth_order = dm.meta[location]["smooth_order"]
         models[name] = get_mortality_pattern_model(dfs[0],
                                                    col_time,
                                                    units_per_year,
-                                                   knots_per_year,
-                                                   tail_size,
+                                                   knots,
                                                    smooth_order)
     return models
 
@@ -137,7 +126,7 @@ def main(dm: DataManager):
         draws = model.get_draws(data[name][1],
                                 col_pred="cases",
                                 num_samples=500)
-        data[name][1]["cases_sd"] = draws.std(axis=0)
+        data[name][1]["cases_sd"] = draws["cases"].std(axis=0)
     results = {name: dfs[1] for name, dfs in data.items()}
 
     # save the mortality pattern results
