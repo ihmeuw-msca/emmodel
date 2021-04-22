@@ -125,8 +125,9 @@ def main(dm: DataManager):
                                       col_pred="cases")
         draws = model.get_draws(data[name][1],
                                 col_pred="cases",
-                                num_samples=500)
-        data[name][1]["cases_sd"] = draws["cases"].std(axis=0)
+                                num_samples=1000)
+        for i in range(draws["cases"].shape[0]):
+            data[name][1][f"cases_draw_{i}"] = draws["cases"][i]
     results = {name: dfs[1] for name, dfs in data.items()}
 
     # save the mortality pattern results
