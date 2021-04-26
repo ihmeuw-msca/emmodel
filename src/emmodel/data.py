@@ -84,7 +84,7 @@ class DataManager:
         time_end = self.meta[location][f"time_end_{time_end_id}"]
         time_unit = self.meta[location]["time_unit"]
         year_time = get_yeartime(df, col_year, col_time, time_unit)
-        time_ub = time_end - year_time.min()
+        time_ub = time_end - year_time.min() + 1
         return df[df["time"] <= time_ub].reset_index(drop=True)
 
     def truncate_time(self,

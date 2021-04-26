@@ -214,6 +214,8 @@ def plot_data(df: pd.DataFrame,
 
     years = df[col_year].unique()
     year_heads = (years - df[col_year].min())*units_per_year + 1
+    offset = df.loc[df.year_id == df[col_year].min(), time_unit].min()
+    year_heads = year_heads - offset + 1
 
     axs = plt.subplots(2, figsize=(2.5*len(years), 10))[1]
     ax = axs[0]
@@ -228,7 +230,6 @@ def plot_data(df: pd.DataFrame,
         ax.axvline(time, linestyle="--", color="gray")
     ax.set_ylabel("deaths")
     ax.set_xlabel("time")
-
     return ax, axs
 
 
@@ -252,6 +253,8 @@ def plot_time_trend(ax: plt.Axes, df: pd.DataFrame,
     units_per_year = 52 if time_unit == "week" else 12
     years = df[col_year].unique()
     year_heads = (years - df[col_year].min())*units_per_year + 1
+    offset = df.loc[df.year_id == df[col_year].min(), time_unit].min()
+    year_heads = year_heads - offset + 1
     ax.set_xticks(year_heads)
     ax.set_xticklabels(years)
     ax.set_xlabel("time")
