@@ -7,49 +7,77 @@ Logit ratio analysis between excess mortality and covid deaths
 """
 from typing import List, Dict, Union
 from pathlib import Path
+from scipy.optimize import LinearConstraint
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from regmod.data import Data
 from regmod.variable import Variable, SplineVariable
 from regmod.utils import SplineSpecs
-from regmod.prior import UniformPrior, SplineUniformPrior
+from regmod.prior import UniformPrior, SplineUniformPrior, SplineGaussianPrior
+from regmod.optimizer import scipy_optimize
 from emmodel.model import ExcessMortalityModel
 from emmodel.variable import ModelVariables
 from emmodel.cascade import CascadeSpecs, Cascade
 
 
 # data file path
-data_path = "./examples/data/fit_data.csv"
+data_path = Path("./examples/data_debug/2020-04-22/stage2_input.csv")
 
 # result folder
-results_path = Path("./examples/results")
+results_path = Path("./examples/results_debug")
 
-# create variables
-variables = ModelVariables(
-    [Variable("intercept"),
-     Variable("log_death_rate_covid"),
-     SplineVariable("idr_lagged",
-                    spline_specs=SplineSpecs(
-                        knots=np.linspace(0.0, 1.0, 3),
-                        degree=2,
-                        knots_type="rel_domain",
-                        include_first_basis=False
-                    ),
-                    priors=[SplineUniformPrior(order=1, lb=-np.inf, ub=0.0)])],
+# define all variables
+intercept_variable = Variable("intercept")
+
+idr_spline_specs = SplineSpecs(
+     knots=np.linspace(0.0, 1.0, 3),
+     degree=2,
+     knots_type="rel_domain",
+     include_first_basis=False
+)
+idr_variable = SplineVariable("idr_lagged",
+                              spline_specs=idr_spline_specs,
+                              priors=[SplineUniformPrior(order=1, lb=-np.inf, ub=0.0),
+                                      SplineGaussianPrior(order=1, mean=0.0, sd=1e-4,
+                                                          domain_lb=0.4, domain_ub=1.0)])
+
+time_spline_specs = SplineSpecs(
+    knots=np.linspace(0.0, 1.0, 10),
+    degree=2,
+    knots_type="rel_domain",
+    include_first_basis=False,
+    r_linear=True
+)
+time_variable = SplineVariable("time_id",
+                               spline_specs=time_spline_specs)
+
+
+
+# create variables for IDR global model
+idr_model_variables = ModelVariables(
+    [intercept_variable,
+     idr_variable],
+    model_type="Linear"
+)
+
+# create variables for cascade
+cascade_model_variables = ModelVariables(
+    [intercept_variable,
+     idr_variable,
+     time_variable],
     model_type="Linear"
 )
 
 # construct the cascade model specification
-idr_variable = ModelVariables([variables.variables[-1]], model_type="Linear")
-other_variables = ModelVariables(variables.variables[:2], model_type="Linear")
 cascade_specs = CascadeSpecs(
-    model_variables=[idr_variable, other_variables],
+    model_variables=[cascade_model_variables],
     prior_masks={"intercept": [1.0],
-                 "log_death_rate_covid": [0.01],
-                 "idr_lagged": [1.0, 1.0, 1.0]},
-    level_masks=[1.0, 1.0, 100.0],
-    col_obs="logit_ratio_0_7"
+                 "idr_lagged": [1.0]*idr_variable.size,
+                 "time_id": [1.0]*time_variable.size},
+    level_masks=[1.0, 1.0, 10.0],
+    col_obs="logit_ratio"
 )
 
 # sample setting
@@ -60,7 +88,7 @@ np.random.seed(123)
 # prediction function
 def predict(df_pred: pd.DataFrame,
             model: ExcessMortalityModel,
-            col_pred: str = "logit_ratio_0_7") -> pd.DataFrame:
+            col_pred: str = "logit_ratio") -> pd.DataFrame:
     df_pred = df_pred.copy()
     pred = np.zeros(df_pred.shape[0])
     for i in range(model.num_models):
@@ -88,17 +116,18 @@ def link_cascade_models(root_model: Cascade,
         for model in sub_models:
             link_cascade_models(model, leaf_models[1:], model_structure[model.name])
 
-
 # plot result
 def plot_model(df, pred_dfs, locations) -> plt.Axes:
     _, ax = plt.subplots(figsize=(8, 5))
-    ax.scatter(df.idr_lagged, df.logit_ratio_0_7, color="gray")
+    ax.scatter(df.time_id, df.logit_ratio, color="gray")
     colors = ["red", "#E88734", "#008080", "#172128"]
     for i, location in enumerate(locations):
         if location not in pred_dfs:
             continue
-        ax.plot(pred_dfs[location].idr_lagged,
-                pred_dfs[location].logit_ratio_0_7, color=colors[i], label=location)
+        pred_dfs[location].sort_values("time_id", inplace=True)
+        ax.plot(pred_dfs[location].time_id,
+                pred_dfs[location].logit_ratio,
+                color=colors[i], label=location)
     if len(locations) == 1:
         index = [True]*df.shape[0]
     elif len(locations) == 2:
@@ -107,9 +136,9 @@ def plot_model(df, pred_dfs, locations) -> plt.Axes:
         index = df.region_name == locations[-1]
     else:
         index = df.ihme_loc_id == locations[-1]
-    ax.scatter(df.idr_lagged[index], df.logit_ratio_0_7[index], color="#38ACEC")
-    ax.set_xlabel("idr_lagged")
-    ax.set_ylabel("logit_ratio_0_7")
+    ax.scatter(df.time_id[index], df.logit_ratio[index], color="#38ACEC")
+    ax.set_xlabel("time_id")
+    ax.set_ylabel("logit_ratio")
     ax.set_title(locations[-1])
     ax.legend()
     return ax
@@ -130,7 +159,7 @@ def sample_coefs(cmodel: Cascade) -> pd.DataFrame:
 
 
 def main():
-    # loading data
+    # load data
     df = pd.read_csv(data_path)
     df = df[df.include].reset_index(drop=True)
 
@@ -138,25 +167,25 @@ def main():
     if not results_path.exists():
         results_path.mkdir()
 
-    # pre-analysis getting prior
-    # exclude Russian for better curve
-    pre_model = ExcessMortalityModel(
-        df[~df.ihme_loc_id.str.contains("RUS")].reset_index(drop=True),
-        [variables],
-        col_obs="logit_ratio_0_7"
+   # Fit global IDR model
+    idr_model = ExcessMortalityModel(df, [idr_model_variables], col_obs="logit_ratio")
+    idr_model.run_models()
+
+
+    # attach data to create spline
+    data = Data(
+        col_obs="logit_ratio",
+        col_covs=[intercept_variable.name,
+                idr_variable.name,
+                time_variable.name]
     )
-    pre_model.run_models()
-    # create idr_lagged spline dictionary
-    num_points = 100
-    df_pred = pd.DataFrame({
-        name: np.zeros(num_points)
-        for name in pre_model.model_variables[0].var_names
-    })
-    df_pred["idr_lagged"] = np.linspace(df.idr_lagged.min(),
-                                        df.idr_lagged.max(), num_points)
-    df_pred = predict(df_pred, pre_model, col_pred="pred")
-    df_pred = df_pred[["idr_lagged", "pred"]].reset_index(drop=True)
-    df_pred.to_csv(results_path / "idr_lagged_spline.csv", index=False)
+    data.df = df
+    idr_variable.check_data(data)
+    time_variable.check_data(data)
+
+    # fix idr coefficients
+    coefs = idr_model.results[0]["coefs"][1:]
+    idr_variable.add_priors(UniformPrior(lb=coefs, ub=coefs))
 
     # getting location structure
     location_structure = {}
@@ -167,10 +196,6 @@ def main():
             location_structure[super_region][region] = list(
                 df[df.region_name == region].ihme_loc_id.unique()
             )
-
-    # fixed the spline shape
-    coefs = pre_model.results[0]["coefs"][len(other_variables.variables):]
-    idr_variable.variables[0].add_priors(UniformPrior(lb=coefs, ub=coefs))
 
     # construct cascade model
     # global model
@@ -215,15 +240,9 @@ def main():
     model_list = global_model.to_list()
 
     # predict
-    df_pred = pd.DataFrame({
-        "idr_lagged": np.linspace(df.idr_lagged.min(),
-                                  df.idr_lagged.max(), 100)
-    })
     pred_dfs = {}
-    for model in model_list:
-        for cov in ["log_death_rate_covid"]:
-            df_pred[cov] = model.df[cov].mean()
-        pred_dfs[model.name] = predict(df_pred, model.model)
+    for cmodel in model_list:
+        pred_dfs[cmodel.name] = predict(cmodel.df, cmodel.model)
 
     # plot
     for loc_id in df.ihme_loc_id.unique():
@@ -234,16 +253,16 @@ def main():
         plt.savefig(results_path / f"{loc_id}.pdf", bbox_inches="tight")
         plt.close("all")
 
-    # create results dataframe
-    coefs = pd.concat([model.model.get_coefs_df() for model in model_list])
-    coefs["location"] = [model.name for model in model_list]
+    # # create results dataframe
+    # coefs = pd.concat([model.model.get_coefs_df() for model in model_list])
+    # coefs["location"] = [model.name for model in model_list]
 
-    coefs.to_csv(results_path / "coefs.csv", index=False)
+    # coefs.to_csv(results_path / "coefs.csv", index=False)
 
-    # create samples of the coefficient
-    for cmodel in model_list:
-        df_coefs = sample_coefs(cmodel)
-        df_coefs.to_csv(results_path / f"cdraws_{cmodel.level_id}_{cmodel.name}.csv", index=False)
+    # # create samples of the coefficient
+    # for cmodel in model_list:
+    #     df_coefs = sample_coefs(cmodel)
+    #     df_coefs.to_csv(results_path / f"cdraws_{cmodel.level_id}_{cmodel.name}.csv", index=False)
 
     return model_list
 
