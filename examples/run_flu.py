@@ -84,7 +84,8 @@ def get_mortality_pattern_models(dm: DataManager,
         col_time = dm.meta[location]["col_time"]
         time_start = dm.meta[location]["time_start"]
         units_per_year = time_start.units_per_year
-        knots = (np.array(dm.meta[location]["knots"]) - time_start.year)*units_per_year
+        knots = (np.array(dm.meta[location]["knots"])*units_per_year + 1 -
+                 time_start.year*units_per_year - time_start.time + 1)
         smooth_order = dm.meta[location]["smooth_order"]
         models[name] = get_mortality_pattern_model(dfs[0],
                                                    col_time,
