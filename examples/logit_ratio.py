@@ -32,7 +32,7 @@ results_path = Path("./examples/results_debug")
 intercept_variable = Variable("intercept")
 
 idr_spline_specs = SplineSpecs(
-     knots=np.linspace(0.0, 1.0, 3),
+     knots=np.linspace(0.0, 1.0, 5),
      degree=2,
      knots_type="rel_domain",
      include_first_basis=False
@@ -51,7 +51,9 @@ time_spline_specs = SplineSpecs(
     r_linear=True
 )
 time_variable = SplineVariable("time_id",
-                               spline_specs=time_spline_specs)
+                               spline_specs=time_spline_specs,
+                               priors=[SplineGaussianPrior(order=1, mean=0.0, sd=1e-4,
+                                                           domain_lb=0.9, domain_ub=1.0, size=2)])
 
 
 
@@ -160,8 +162,14 @@ def sample_coefs(cmodel: Cascade) -> pd.DataFrame:
 
 def main():
     # load data
-    df = pd.read_csv(data_path)
-    df = df[df.include].reset_index(drop=True)
+    df_all = pd.read_csv(data_path)
+    df_all = df_all[df_all.include].reset_index(drop=True)
+
+    national_index = df_all.ihme_loc_id.str.len() == 3
+    df_national = df_all[national_index].reset_index(drop=True)
+    df_subnational = df_all[~national_index].reset_index(drop=True)
+
+    df = df_national
 
     # create results folder
     if not results_path.exists():
@@ -193,9 +201,15 @@ def main():
         regions = df[df.super_region_name == super_region].region_name.unique()
         location_structure[super_region] = {}
         for region in regions:
-            location_structure[super_region][region] = list(
-                df[df.region_name == region].ihme_loc_id.unique()
+            nationals = list(
+                df_national[df_national.region_name == region].ihme_loc_id.unique()
             )
+            location_structure[super_region][region] = {}
+            for national in nationals:
+                subnational_index = df_subnational.ihme_loc_id.str.startswith(national)
+                location_structure[super_region][region][national] = list(
+                    df_subnational.ihme_loc_id[subnational_index].unique()
+                )
 
     # construct cascade model
     # global model
@@ -219,18 +233,27 @@ def main():
         for region in df.region_name.unique()
     ]
 
-    # country and subnational model
-    leaf_models = [
-        Cascade(df[df.ihme_loc_id.str.contains(country)].reset_index(drop=True),
+    # national model
+    national_models = [
+        Cascade(df_national[df_national.ihme_loc_id == national].reset_index(drop=True),
                 cascade_specs,
                 level_id=3,
-                name=country)
-        for country in df.ihme_loc_id.unique()
+                name=national)
+        for national in df_national.ihme_loc_id.unique()
+    ]
+
+    # subnational model
+    subnational_models = [
+        Cascade(df_subnational[df_subnational.ihme_loc_id == subnational].reset_index(drop=True),
+                cascade_specs,
+                level_id=4,
+                name=subnational)
+        for subnational in df_subnational.ihme_loc_id.unique()
     ]
 
     # link all models together
     link_cascade_models(global_model,
-                        [super_region_models, region_models, leaf_models],
+                        [super_region_models, region_models, national_models, subnational_models],
                         location_structure)
 
     # fit model
