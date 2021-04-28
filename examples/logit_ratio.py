@@ -122,7 +122,7 @@ def link_cascade_models(root_model: Cascade,
 def plot_model(df, pred_dfs, locations) -> plt.Axes:
     _, ax = plt.subplots(figsize=(8, 5))
     ax.scatter(df.time_id, df.logit_ratio, color="gray")
-    colors = ["red", "#E88734", "#008080", "#172128"]
+    colors = ["red", "#E88734", "#008080", "#02639B", "#172128"]
     for i, location in enumerate(locations):
         if location not in pred_dfs:
             continue
@@ -268,11 +268,18 @@ def main():
         pred_dfs[cmodel.name] = predict(cmodel.df, cmodel.model)
 
     # plot
-    for loc_id in df.ihme_loc_id.unique():
-        df_sub = df[df.ihme_loc_id == loc_id]
-        super_region = df_sub.super_region_name.values[0]
-        region = df_sub.region_name.values[0]
-        plot_model(df, pred_dfs, ["global", super_region, region, loc_id])
+    for loc_id in df_all.ihme_loc_id.unique():
+        df_sub = df_all[df_all.ihme_loc_id == loc_id]
+        loc_structure = [
+            "Global",
+            df_sub.super_region_name.values[0],
+            df_sub.region_name.values[0]
+        ]
+        if len(loc_id) > 3:
+            loc_structure.extend([loc_id[:3], loc_id])
+        else:
+            loc_structure.append(loc_id)
+        plot_model(df_all, pred_dfs, loc_structure)
         plt.savefig(results_path / f"{loc_id}.pdf", bbox_inches="tight")
         plt.close("all")
 
