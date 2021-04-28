@@ -75,7 +75,7 @@ cascade_model_variables = ModelVariables(
 # construct the cascade model specification
 cascade_specs = CascadeSpecs(
     model_variables=[cascade_model_variables],
-    prior_masks={"intercept": [1.0],
+    prior_masks={"intercept": [np.inf],
                  "idr_lagged": [1.0]*idr_variable.size,
                  "time_id": [1.0]*(time_variable.size - 1) + [0.1]},
     level_masks=[1.0, 1.0, 10.0, 10.0],
