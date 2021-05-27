@@ -58,7 +58,7 @@ class ExcessMortalityModel:
             self.data[i].detach_df()
 
     def get_coefs_df(self) -> pd.DataFrame:
-        coefs = {}
+        dfs = []
         for i in range(self.num_models):
             variable_names = []
             for param in self.models[i].params:
@@ -68,11 +68,13 @@ class ExcessMortalityModel:
                     else:
                         variable_names.extend([f"{variable.name}_{i}"
                                                for i in range(variable.size)])
-            coefs.update({
-                variable_name: self.results[i]["coefs"][j]
-                for j, variable_name in enumerate(variable_names)
-            })
-        return pd.DataFrame(coefs, index=[0])
+            dfs.append(pd.DataFrame({
+                "model_id": i,
+                "name": variable_names,
+                "coef": self.results[i]["coefs"],
+                "coef_sd": np.sqrt(np.diag(self.results[i]["vcov"]))
+            }))
+        return pd.concat(dfs, ignore_index=True)
 
     def get_results_samples(self, num_samples: int = 1000) -> List[List[Dict]]:
         """
