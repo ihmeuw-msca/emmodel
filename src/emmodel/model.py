@@ -69,10 +69,10 @@ class ExcessMortalityModel:
                         variable_names.extend([f"{variable.name}_{i}"
                                                for i in range(variable.size)])
             coefs.update({
-                variable_name: [self.results[i]["coefs"][j], np.sqrt(self.results[i]["vcov"][j,j])]
+                variable_name: [self.results[i]["coefs"][j], np.sqrt(self.results[i]["vcov"][j,j]), i]
                 for j, variable_name in enumerate(variable_names)
             })
-        return pd.DataFrame(coefs, index=['Estimate','SE'])
+        return pd.DataFrame(coefs, index=['Estimate','SE', 'stage_id']).T
 
     def get_results_samples(self, num_samples: int = 1000) -> List[List[Dict]]:
         """
