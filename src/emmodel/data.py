@@ -3,17 +3,21 @@ Data module
 """
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import yaml
 import numpy as np
 import pandas as pd
+
+from emmodel.utils import YearTime
 
 
 @dataclass
 class DataManager:
     i_folder: str
     o_folder: str
+    meta_filename: str = "meta.yaml"
+    locations: List[str] = None
 
     def __post_init__(self):
         self.i_folder = Path(self.i_folder)
@@ -28,28 +32,41 @@ class DataManager:
             self.o_folder.mkdir()
 
         self.meta = self.get_meta()
-        self.locations = list(self.meta.keys())
+        if self.locations is None:
+            self.locations = list(self.meta.keys())
+        else:
+            for location in self.locations:
+                if location not in self.meta:
+                    raise ValueError(f"{location} not in meta file.")
 
     def get_meta(self):
-        with open(self.i_folder / "meta.yaml", "r") as f:
+        with open(self.i_folder / self.meta_filename, "r") as f:
             meta = yaml.load(f, Loader=yaml.FullLoader)
         default = meta.pop("default")
         for location in meta:
             meta[location] = {**default, **meta[location]}
+            for group_key in ["age_groups", "sex_groups"]:
+                group_info = meta[location][group_key]
+                meta[location][group_key] = group_info if isinstance(group_info, list) else [group_info]
+            for time_key in ["time_start", "time_end_0", "time_end_1"]:
+                time_value = meta[location][time_key]
+                meta[location][time_key] = YearTime(time_value["year"],
+                                                    time_value["detailed"],
+                                                    time_unit=meta[location]["time_unit"])
         return meta
 
     def read_data_location(self, location: str, group_specs: Dict) -> pd.DataFrame:
         col_year = self.meta[location]["col_year"]
         col_time = self.meta[location]["col_time"]
         col_data = self.meta[location]["col_data"]
-        df = pd.read_csv(self.i_folder / f"{location}.csv")
+        time_start = self.meta[location]["time_start"]
+        df = pd.read_csv(self.i_folder / f"{location}.csv", low_memory=False)
         df = select_cols(df, [col_year, col_time] + col_data)
         df = select_groups(df, group_specs)
-        df = add_time(df,
-                      col_year,
-                      col_time,
-                      self.meta[location]["time_start"],
-                      self.meta[location]["time_unit"])
+        # df = df[~df.deaths.isna()].reset_index(drop=True)
+        if df.empty:
+            raise ValueError(f"Location {location} has no matching data for {group_specs}.")
+        df = add_time(df, col_year, col_time, time_start)
         return df.fillna(0.0)
 
     def read_data(self, group_specs: Dict) -> Dict[str, pd.DataFrame]:
@@ -65,12 +82,9 @@ class DataManager:
         col_year = self.meta[location]["col_year"]
         col_time = self.meta[location]["col_time"]
         time_end = self.meta[location][f"time_end_{time_end_id}"]
-        time_ub = get_time_from_yeartime(
-            time_end[0],
-            time_end[1],
-            get_time_min(df, col_year, col_time),
-            self.meta[location]["time_unit"]
-        )
+        time_unit = self.meta[location]["time_unit"]
+        year_time = get_yeartime(df, col_year, col_time, time_unit)
+        time_ub = time_end - year_time.min() + 1
         return df[df["time"] <= time_ub].reset_index(drop=True)
 
     def truncate_time(self,
@@ -105,31 +119,18 @@ def select_groups(df: pd.DataFrame,
 def add_time(df: pd.DataFrame,
              col_year: str,
              col_time: str,
-             time_start: Tuple[int, int] = (0, 0),
-             time_unit: str = "week") -> pd.DataFrame:
+             time_start: YearTime) -> pd.DataFrame:
 
-    df["time"] = get_time_from_yeartime(df[col_year],
-                                        df[col_time],
-                                        time_start=time_start,
-                                        time_unit=time_unit)
-    df = df[df.time >= 1].reset_index(drop=True)
-    df.time = df.time - df.time.min() + 1
-    return df.reset_index(drop=True)
+    yeartime = get_yeartime(df, col_year, col_time, time_start.time_unit)
+    df = df[yeartime >= time_start].reset_index(drop=True)
+    yeartime = get_yeartime(df, col_year, col_time, time_start.time_unit)
+    df["time"] = (yeartime - yeartime.min()).astype(int) + 1
+    return df
 
 
-def get_time_min(df: pd.DataFrame,
+def get_yeartime(df: pd.DataFrame,
                  col_year: str,
-                 col_time: str) -> Tuple[int, int]:
-    year_min = df[col_year].min()
-    time_min = df.loc[df[col_year] == year_min, col_time].min()
-    return (year_min, time_min)
-
-
-def get_time_from_yeartime(year: np.ndarray,
-                           time: np.ndarray,
-                           time_start: Tuple[int, int],
-                           time_unit: str) -> np.ndarray:
-    if time_unit not in ["week", "month"]:
-        raise ValueError("`time_unit` must be either 'week' or 'month'.")
-    units_per_year = 52 if time_unit == "week" else 12
-    return (year - time_start[0])*units_per_year + time - time_start[1] + 1
+                 col_time: str,
+                 time_unit: str) -> np.ndarray:
+    return np.array([YearTime(*t, time_unit=time_unit)
+                     for t in zip(df[col_year], df[col_time])])

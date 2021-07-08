@@ -17,6 +17,7 @@ class CascadeSpecs:
     model_variables: List[ModelVariables]
     prior_masks: Dict[str, np.ndarray]
     level_masks: List[float]
+    col_obs: str = "deaths"
 
 
 @dataclass
@@ -48,10 +49,8 @@ class Cascade:
     def to_list(self) -> List:
         current_list = [self]
         if not self.is_leaf():
-            current_list.append([
-                child.to_list[0]
-                for child in self.children
-            ])
+            for child in self.children:
+                current_list.extend(child.to_list())
         return current_list
 
     def set_priors(self, priors: Dict[str, regmod.prior.Prior]):
@@ -62,7 +61,9 @@ class Cascade:
             variables.add_priors(self.priors)
 
     def get_model(self):
-        self.model = ExcessMortalityModel(self.df, self.model_variables)
+        self.model = ExcessMortalityModel(self.df,
+                                          self.model_variables,
+                                          col_obs=self.specs.col_obs)
 
     def get_priors(self) -> Dict[str, regmod.prior.Prior]:
         priors = {}
@@ -84,3 +85,6 @@ class Cascade:
             for child in self.children:
                 child.set_priors(priors)
                 child.run_models()
+
+    def __repr__(self) -> str:
+        return f"Cascade(name={self.name})"
