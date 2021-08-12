@@ -40,14 +40,16 @@ class ExcessMortalityModel:
         ]
         self.models = []
         self.results = []
+        self.vcovs = []
 
     def run_models(self):
         for i in range(self.num_models):
             self.data[i].attach_df(self.df)
             self.models.append(self.model_variables[i].get_model(self.data[i]))
             self.results.append(scipy_optimize(self.models[i]))
+            self.vcovs.append(self.models[i].opt_vcov)
             pred = self.models[i].params[0].get_param(
-                self.results[i]["coefs"], self.data[i]
+                self.results[i], self.data[i]
             )
             if i + 1 == self.num_models:
                 self.df["deaths_pred"] = pred
@@ -71,8 +73,8 @@ class ExcessMortalityModel:
             dfs.append(pd.DataFrame({
                 "model_id": i,
                 "name": variable_names,
-                "coef": self.results[i]["coefs"],
-                "coef_sd": np.sqrt(np.diag(self.results[i]["vcov"]))
+                "coef": self.results[i],
+                "coef_sd": np.sqrt(np.diag(self.vcovs[i]))
             }))
         return pd.concat(dfs, ignore_index=True)
 
@@ -93,8 +95,8 @@ class ExcessMortalityModel:
         """
         coefs_samples = [
             np.random.multivariate_normal(
-                self.results[i]["coefs"],
-                self.results[i]["vcov"],
+                self.results[i],
+                self.vcovs[i],
                 size=num_samples
             )
             for i in range(self.num_models)
@@ -130,8 +132,12 @@ class ExcessMortalityModel:
         results = self.results if results is None else results
         for i in range(self.num_models):
             self.data[i].attach_df(df)
+            if isinstance(results[i], dict):
+                coefs = results[i]['coefs']
+            else:
+                coefs = results[i]
             pred = self.models[i].params[0].get_param(
-                results[i]["coefs"], self.data[i]
+                coefs, self.data[i]
             )
             if i + 1 == self.num_models:
                 df[col_pred] = pred
