@@ -39,17 +39,15 @@ class ExcessMortalityModel:
             for i in range(self.num_models)
         ]
         self.models = []
-        self.coefs = []
-        self.vcovs = []
+        self.results = []
 
     def run_models(self):
         for i in range(self.num_models):
             self.data[i].attach_df(self.df)
             self.models.append(self.model_variables[i].get_model(self.data[i]))
-            self.coefs.append(scipy_optimize(self.models[i]))
-            self.vcovs.append(self.models[i].opt_vcov)
+            self.results.append(scipy_optimize(self.models[i]))
             pred = self.models[i].params[0].get_param(
-                self.coefs[i], self.data[i]
+                self.results[i]["coefs"], self.data[i]
             )
             if i + 1 == self.num_models:
                 self.df["deaths_pred"] = pred
@@ -73,14 +71,14 @@ class ExcessMortalityModel:
             dfs.append(pd.DataFrame({
                 "model_id": i,
                 "name": variable_names,
-                "coef": self.coefs[i],
-                "coef_sd": np.sqrt(np.diag(self.vcovs[i]))
+                "coef": self.results[i]["coefs"],
+                "coef_sd": np.sqrt(np.diag(self.results[i]["vcov"]))
             }))
         return pd.concat(dfs, ignore_index=True)
 
-    def get_coefs_samples(self, num_samples: int = 1000) -> List[List[Dict]]:
+    def get_results_samples(self, num_samples: int = 1000) -> List[List[Dict]]:
         """
-        Get the samples of coefs.
+        Get the samples of results.
 
         Parameters
         ----------
@@ -90,27 +88,27 @@ class ExcessMortalityModel:
         Returns
         -------
         List[List[Dict]]
-            List of samples of coefs, coefs will be in the form of list of
+            List of samples of results, results will be in the form of list of
             dictionary.
         """
         coefs_samples = [
             np.random.multivariate_normal(
-                self.coefs[i],
-                self.vcovs[i],
+                self.results[i]["coefs"],
+                self.results[i]["vcov"],
                 size=num_samples
             )
             for i in range(self.num_models)
         ]
-        coefs_samples = np.array([
+        results_samples = np.array([
             [{"coefs": coefs_samples[i][j]} for j in range(num_samples)]
             for i in range(self.num_models)
         ])
-        return coefs_samples.T
+        return results_samples.T
 
     def _predict(self,
                  df: pd.DataFrame,
                  col_pred: str = "deaths_pred",
-                 coefs: List[Dict] = None) -> pd.DataFrame:
+                 results: List[Dict] = None) -> pd.DataFrame:
         """
         Inner predict function.
 
@@ -120,26 +118,21 @@ class ExcessMortalityModel:
             Dataframe that contains information of the model data.
         col_pred : str, optional
             Name of the final prediction column, by default "deaths_pred"
-        coefs : List[Dict], optional
-            Provided coefs, by default None. If None, use the instance
-            coefs.
+        results : List[Dict], optional
+            Provided results, by default None. If None, use the instance
+            results.
 
         Returns
         -------
         pd.DataFrame
             Predicted Dataframe.
         """
-        coefs = self.coefs if coefs is None else coefs
+        results = self.results if results is None else results
         for i in range(self.num_models):
             self.data[i].attach_df(df)
-            if isinstance(coefs[i], dict):
-                pred = self.models[i].params[0].get_param(
-                    coefs[i]['coefs'], self.data[i]
-                    )
-            else:
-                pred = self.models[i].params[0].get_param(
-                    coefs[i], self.data[i]
-                    )
+            pred = self.models[i].params[0].get_param(
+                results[i]["coefs"], self.data[i]
+            )
             if i + 1 == self.num_models:
                 df[col_pred] = pred
                 df['trend_residual'] = np.log(df['deaths']) - df[f"offset_{i}"]
@@ -155,7 +148,7 @@ class ExcessMortalityModel:
                   df: pd.DataFrame,
                   col_pred: str = "deaths_pred",
                   num_samples: int = 1000,
-                  coefs_samples: List[List[Dict]] = None) -> Dict[str, np.ndarray]:
+                  results_samples: List[List[Dict]] = None) -> Dict[str, np.ndarray]:
         """
         Get draws of the prediction.
 
@@ -166,23 +159,23 @@ class ExcessMortalityModel:
         col_pred : str, optional
             Name of the final prediction column, by default "deaths_pred"
         num_samples : int, optional
-            Number of samples, by default 1000. Only use when coefs_samples
+            Number of samples, by default 1000. Only use when results_samples
             is None.
-        coefs_samples : List[List[Dict]], optional
-            Samples of coefs, by default None. If None will automatically
-            sample coefs.
+        results_samples : List[List[Dict]], optional
+            Samples of results, by default None. If None will automatically
+            sample results.
 
         Returns
         -------
         Dict[str, np.ndarray]
             Draws of time_trend, time_residual and col_pred.
         """
-        if coefs_samples is None:
-            coefs_samples = self.get_coefs_samples(num_samples)
+        if results_samples is None:
+            results_samples = self.get_results_samples(num_samples)
 
         draws = {"time_trend": [], "trend_residual": [], col_pred: []}
-        for coefs in coefs_samples:
-            df = self._predict(df.copy(), col_pred=col_pred, coefs=coefs)
+        for results in results_samples:
+            df = self._predict(df.copy(), col_pred=col_pred, results=results)
             for key in draws.keys():
                 draws[key].append(df[key].to_numpy())
         for key in draws.keys():
