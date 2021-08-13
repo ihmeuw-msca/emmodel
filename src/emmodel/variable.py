@@ -8,7 +8,7 @@ from regmod.parameter import Parameter
 from regmod.prior import Prior, GaussianPrior, LinearUniformPrior
 from regmod.models import Model, PoissonModel, GaussianModel
 from regmod.data import Data
-from regmod.utils import sizes_to_sclices
+from regmod.utils import sizes_to_slices
 
 
 class ModelVariables:
@@ -42,7 +42,7 @@ class ModelVariables:
                          min_var: float = 0.1) -> Dict[str, Prior]:
         mean = result["coefs"]
         sd = np.sqrt(np.maximum(min_var, np.diag(result["vcov"])))
-        slices = sizes_to_sclices([var.size for var in self.variables])
+        slices = sizes_to_slices([var.size for var in self.variables])
         return {
             var_name: GaussianPrior(mean=mean[slices[i]], sd=sd[slices[i]])
             for i, var_name in enumerate(self.var_names)
