@@ -11,7 +11,7 @@ from regmod.variable import Variable
 from regmod.optimizer import scipy_optimize
 from regmod.models import GaussianModel
 from regmod.data import Data
-from regmod.utils import sizes_to_sclices
+from regmod.utils import sizes_to_slices
 from regmod.prior import GaussianPrior
 
 from emmodel.variable import ModelVariables
@@ -337,7 +337,7 @@ class LinearExcessMortalityModel:
         mean = self.result_stage1["coefs"]
         var_names = [variable.name for variable in self.variables_stage1]
         sd = np.sqrt(np.maximum(min_var, np.diag(self.result_stage1["vcov"])))
-        slices = sizes_to_sclices([var.size for var in self.variables_stage1])
+        slices = sizes_to_slices([var.size for var in self.variables_stage1])
         priors = {
             var_name: GaussianPrior(mean=mean[slices[i]], sd=sd[slices[i]])
             for i, var_name in enumerate(var_names) if var_name != 'intercept'
